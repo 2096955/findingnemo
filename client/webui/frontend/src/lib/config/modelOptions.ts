@@ -5,8 +5,8 @@ export const MODEL_OPTIONS = [
 ] as const;
 
 export const MODE_OPTIONS = [
-  { value: "research", label: "Deep Research", shortLabel: "Research", agentBase: "OrchestratorAgent" },
-  { value: "triage", label: "Medical Triage", shortLabel: "Triage", agentBase: "TriageIntakeAgent" },
+  { value: "research", label: "Route Planning", shortLabel: "Routes", agentBase: "OrchestratorAgent" },
+  { value: "triage", label: "Risk Assessment", shortLabel: "Risk", agentBase: "TriageIntakeAgent" },
 ] as const;
 
 export type ModelValue = (typeof MODEL_OPTIONS)[number]["value"];

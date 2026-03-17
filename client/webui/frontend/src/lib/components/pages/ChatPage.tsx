@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 
-import { PanelLeftIcon } from "lucide-react";
+import { PanelLeftIcon, Ship, AlertTriangle, MapPin, Waves, Anchor } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 
 import { Header } from "@/lib/components/header";
@@ -10,6 +11,34 @@ import type { TextPart } from "@/lib/types";
 import { ChatInputArea, ChatMessage, ChatSessionDialog, ChatSessionDeleteDialog, ChatSidePanel, LoadingMessageRow, ProjectBadge, SessionSidePanel } from "@/lib/components/chat";
 import { Button, ChatMessageList, CHAT_STYLES, ResizablePanelGroup, ResizablePanel, ResizableHandle, Spinner, Tooltip, TooltipContent, TooltipTrigger } from "@/lib/components/ui";
 import type { ChatMessageListRef } from "@/lib/components/ui/chat/chat-message-list";
+
+const EXAMPLE_PROMPTS = [
+    {
+        icon: Ship,
+        label: "Plan a safe route",
+        prompt: "Plan a safe shipping route from San Francisco to Los Angeles avoiding whale zones",
+    },
+    {
+        icon: AlertTriangle,
+        label: "Check collision risk",
+        prompt: "What is the collision risk in the Santa Barbara Channel this month?",
+    },
+    {
+        icon: Waves,
+        label: "Migration patterns",
+        prompt: "Show me humpback whale migration patterns for spring",
+    },
+    {
+        icon: MapPin,
+        label: "Historical strikes",
+        prompt: "What historical whale strikes have occurred near Monterey Bay?",
+    },
+    {
+        icon: Anchor,
+        label: "Species at risk",
+        prompt: "What whale species are most at risk in the North Pacific?",
+    },
+];
 
 // Constants for sidepanel behavior
 const COLLAPSED_SIZE = 4; // icon-only mode size
@@ -49,6 +78,7 @@ export function ChatPage() {
         closeSessionDeleteModal,
         confirmSessionDelete,
         currentTaskId,
+        handleSubmit,
     } = useChatContext();
     const { isTaskMonitorConnected, isTaskMonitorConnecting, taskMonitorSseError, connectTaskMonitorStream } = useTaskContext();
     const [isSessionSidePanelCollapsed, setIsSessionSidePanelCollapsed] = useState(true);
@@ -291,6 +321,24 @@ export function ChatPage() {
                                                     const shouldStream = isLastMessage && isResponding && !message.isUser;
                                                     return <ChatMessage message={message} key={messageKey} isLastWithTaskId={isLastWithTaskId} isStreaming={shouldStream} />;
                                                 })}
+                                                {messages.length === 1 && !isResponding && (
+                                                    <div className="mx-auto mt-4 grid max-w-2xl grid-cols-1 gap-3 px-6 sm:grid-cols-2 lg:grid-cols-3">
+                                                        {EXAMPLE_PROMPTS.map((ex) => (
+                                                            <button
+                                                                key={ex.label}
+                                                                onClick={() => {
+                                                                    const fakeEvent = { preventDefault: () => {} } as FormEvent;
+                                                                    handleSubmit(fakeEvent, null, ex.prompt);
+                                                                }}
+                                                                className="group flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-all hover:border-[var(--color-brand-wMain)] hover:shadow-md"
+                                                            >
+                                                                <ex.icon className="h-5 w-5 text-[var(--color-brand-wMain)] opacity-70 group-hover:opacity-100" />
+                                                                <span className="text-sm font-medium">{ex.label}</span>
+                                                                <span className="text-muted-foreground line-clamp-2 text-xs">{ex.prompt}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </ChatMessageList>
                                             <div style={CHAT_STYLES}>
                                                 {isResponding && <LoadingMessageRow statusText={(backendStatusText || latestStatusText.current) ?? undefined} onViewWorkflow={handleViewProgressClick} />}
