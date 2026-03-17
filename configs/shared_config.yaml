@@ -1,0 +1,52 @@
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, true}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8008}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - models:
+    orchestrator: &orchestrator_model
+      model: ${LLM_ORCHESTRATOR_MODEL, vertex_ai/gemini-2.5-flash}
+      temperature: 0.2
+      max_tokens: 16000
+      parallel_tool_calls: true
+      cache_strategy: "none"
+      num_retries: 2
+
+    specialist: &specialist_model
+      model: ${LLM_SPECIALIST_MODEL, vertex_ai/gemini-2.5-flash}
+      temperature: 0.3
+      max_tokens: 12000
+      parallel_tool_calls: true
+      cache_strategy: "none"
+      num_retries: 2
+
+    verifier: &verifier_model
+      model: ${LLM_VERIFIER_MODEL, vertex_ai/gemini-2.5-pro}
+      temperature: 0.1
+      max_tokens: 8000
+      cache_strategy: "none"
+      num_retries: 3
+
+    reviser: &reviser_model
+      model: ${LLM_REVISER_MODEL, vertex_ai/gemini-2.5-flash}
+      temperature: 0.3
+      max_tokens: 12000
+      cache_strategy: "none"
+      num_retries: 2
+
+    general: &general_model
+      model: ${LLM_GENERAL_MODEL, vertex_ai/gemini-2.5-flash}
+      cache_strategy: "none"
+
+  - services:
+    session_service: &default_session_service
+      type: "memory"
+
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/whale-agent"
+      artifact_scope: namespace
