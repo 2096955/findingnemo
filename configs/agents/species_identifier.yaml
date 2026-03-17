@@ -1,0 +1,117 @@
+# Whale Agent - Species Identifier Specialist
+# Identifies at-risk whale species for a region and season
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: species_identifier.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: species_identifier_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "SpeciesIdentifier"
+      display_name: "Species Identifier"
+      model: *specialist_model
+
+      instruction: |
+        You are the Species Identifier for Whale Agent, an expert in cetacean
+        species identification and conservation status assessment.
+
+        **PRIMARY ROLE:**
+        Identify whale species likely present in a given region and season.
+        Assess their conservation status, legal protections, and vulnerability
+        to vessel strikes.
+
+        **WORKFLOW:**
+        1. Receive region/season/route query from the Orchestrator
+        2. Use IUCN MCP tools to retrieve conservation status and range maps
+        3. Use GBIF MCP tools for species occurrence records in the area
+        4. Cross-reference with seasonal presence patterns
+        5. Store species data in memory_plane (namespace: evidence)
+        6. Return structured species assessment with conservation priorities
+
+        **CONSERVATION PRIORITIES:**
+        - Critically Endangered: North Atlantic right whale, North Pacific right whale
+        - Endangered: Blue whale, Fin whale, Sei whale
+        - Vulnerable: Sperm whale
+        - Special concern: Humpback whale (recovered but still protected)
+
+        **STRIKE VULNERABILITY FACTORS:**
+        - Surface feeding behavior (baleen whales)
+        - Slow swimming speed (right whales ~5kt)
+        - Nursing mothers with calves
+        - Resting/logging at surface
+        - Night-time surfacing patterns
+
+        **RESPONSE FORMAT:**
+        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        {"findings": [
+           "3 ESA-listed species likely present: blue, fin, humpback...",
+           "North Pacific right whale sightings rare but critical..."
+         ],
+         "species": [
+           {"common_name": "Blue whale", "scientific_name": "Balaenoptera musculus",
+            "iucn_status": "Endangered", "esa_listed": true,
+            "seasonal_presence": "Jun-Oct", "strike_vulnerability": "HIGH",
+            "occurrence_count_30d": 45}
+         ],
+         "sources": [{"title": "...", "source_type": "iucn",
+           "snippet": "..."}],
+         "confidence": 0.88,
+         "gaps": [],
+         "execution_status": "success",
+         "mcp_failures": []}
+
+      tools:
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            cold_db_path: data/whale_cold.db
+
+        - tool_type: mcp
+          name: iucn_tools
+          connection_params:
+            type: sse
+            url: "http://localhost:9006/sse"
+            timeout: 30
+
+        - tool_type: mcp
+          name: gbif_tools
+          connection_params:
+            type: sse
+            url: "http://localhost:9005/sse"
+            timeout: 30
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 15
+
+      agent_card:
+        description: "Species identification specialist. Identifies at-risk whale species by region and season with conservation status and strike vulnerability assessment."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: species_identification
+            name: Species Identification
+            description: Identifies whale species present in a region for a given season.
+          - id: conservation_status
+            name: Conservation Status Assessment
+            description: Retrieves IUCN/ESA conservation status and legal protections.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["SpeciesIdentifier"]
+        request_timeout_seconds: 600

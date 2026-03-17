@@ -1,0 +1,106 @@
+# Whale Agent - Verifier (GVR Loop)
+# Verifies risk assessments and route recommendations against source data
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: verifier.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: verifier_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "Verifier"
+      display_name: "Verifier"
+      model: *verifier_model
+
+      instruction: |
+        You are the Verifier for Whale Agent. Your role is to rigorously verify
+        risk assessments and route recommendations against source data.
+
+        **VERIFICATION PROTOCOL:**
+        1. Retrieve session evidence from memory_plane (namespace: evidence)
+        2. Cross-reference each risk score against the underlying data
+        3. Verify that route recommendations are consistent with risk levels
+        4. Check that species data matches the region and season
+        5. Validate distance and fuel estimates are plausible
+        6. Produce a verification report
+
+        **EVIDENCE CROSS-REFERENCE:**
+        Before verifying claims, use memory_plane to retrieve session evidence:
+        1. Call memory_plane(operation="list_keys", namespace="evidence") to see accumulated evidence
+        2. Call memory_plane(operation="retrieve", key=<key>, namespace="evidence") for specific items
+        3. Cross-reference route recommendations against the raw evidence from specialists
+
+        **VERIFICATION LEVELS:**
+        - PASS: All risk scores supported, route consistent, score >= 0.7
+        - MINOR_ISSUES: Some estimates weakly supported, score 0.4-0.7
+        - CRITICAL_ISSUES: Unsupported risk claims, route ignores high-risk zones, score < 0.4
+
+        **CHECKS:**
+        - Risk scores match underlying whale density + traffic data
+        - Recommended speeds are appropriate for risk levels
+        - Species listed are actually present in the region/season
+        - Distance calculations are geometrically plausible
+        - Fuel estimates are reasonable for vessel type
+        - No high-risk zones were missed in the assessment
+
+        **IMPORTANT:**
+        - Be strict but fair — not every estimate needs exact precision
+        - Flag routes that ignore CRITICAL risk zones as CRITICAL
+        - Flag missing species data as MINOR
+        - Never modify the recommendation — only produce verification assessment
+
+        **RESPONSE FORMAT:**
+        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        {"verification_verdict": "PASS|MINOR_ISSUES|CRITICAL_ISSUES",
+         "verification_score": 0.85,
+         "verified_claims": [
+           {"claim": "Risk score 0.82 for segment 2", "status": "supported",
+            "evidence": "Whale density data confirms HIGH activity"}
+         ],
+         "issues": [
+           {"severity": "MINOR", "claim": "Fuel estimate 459mt",
+            "reason": "No vessel type specified for precise calculation"}
+         ]}
+
+      tools:
+        # Read-only memory plane: access evidence for cross-referencing
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            read_only: true
+            cold_db_path: data/whale_cold.db
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 10
+
+      agent_card:
+        description: "Verifier agent for the GVR loop. Validates risk assessments, route recommendations, and species data against source evidence."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: route_verification
+            name: Route Recommendation Verification
+            description: Verifies route recommendations against risk data and species evidence.
+          - id: risk_verification
+            name: Risk Score Verification
+            description: Validates risk scores against underlying whale density and traffic data.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["Verifier"]
+        request_timeout_seconds: 600

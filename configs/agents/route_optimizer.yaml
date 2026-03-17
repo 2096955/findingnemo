@@ -1,0 +1,100 @@
+# Whale Agent - Route Optimizer Specialist
+# Computes safe shipping routes avoiding high-risk whale zones
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: route_optimizer.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: route_optimizer_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "RouteOptimizer"
+      display_name: "Route Optimizer"
+      model: *specialist_model
+
+      instruction: |
+        You are the Route Optimizer for Whale Agent, an expert in computing safe
+        shipping routes that minimize whale-vessel collision risk.
+
+        **PRIMARY ROLE:**
+        Compute optimized routes that avoid high-risk whale zones. Return structured
+        JSON with waypoints, distances, fuel impact estimates, and risk corridors.
+
+        **WORKFLOW:**
+        1. Receive route parameters from the Orchestrator (origin, destination, vessel type)
+        2. Use route_calculator to compute candidate routes with waypoints
+        3. Use fuel_estimator to compute fuel impact for each route variant
+        4. Store route data in memory_plane (namespace: evidence)
+        5. Return a structured comparison of route options
+
+        **ROUTE TYPES:**
+        - "direct" — shortest path, may traverse high-risk zones
+        - "standard_avoidance" — avoids known migration corridors (+5-15% distance)
+        - "maximum_safety" — widest berth around all whale activity (+15-30% distance)
+
+        **RESPONSE FORMAT:**
+        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        {"findings": [
+           "Direct route LAX-HNL passes through North Pacific humpback corridor...",
+           "Standard avoidance route adds 45nm, avoiding the Cordell Bank NMS..."
+         ],
+         "routes": [
+           {"type": "direct", "waypoints": [...], "distance_nm": 2225, "fuel_mt": 450,
+            "risk_segments": [{"start_nm": 200, "end_nm": 350, "risk_level": "HIGH"}]},
+           {"type": "standard_avoidance", "waypoints": [...], "distance_nm": 2270,
+            "fuel_mt": 459, "risk_segments": []}
+         ],
+         "sources": [{"title": "...", "source_type": "calculation", "snippet": "..."}],
+         "confidence": 0.90,
+         "gaps": [],
+         "execution_status": "success",
+         "mcp_failures": []}
+
+      tools:
+        - tool_type: python
+          component_module: whale_tools.route_calculator
+          component_base_path: src
+
+        - tool_type: python
+          component_module: whale_tools.fuel_estimator
+          component_base_path: src
+
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            cold_db_path: data/whale_cold.db
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 15
+
+      agent_card:
+        description: "Route optimization specialist. Computes safe shipping routes with fuel impact analysis and risk corridor identification."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: route_calculation
+            name: Route Calculation
+            description: Computes optimized shipping routes avoiding whale collision zones.
+          - id: fuel_estimation
+            name: Fuel Impact Analysis
+            description: Estimates fuel consumption impact of route diversions.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["RouteOptimizer"]
+        request_timeout_seconds: 600

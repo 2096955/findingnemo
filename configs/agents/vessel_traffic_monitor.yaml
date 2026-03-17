@@ -1,0 +1,110 @@
+# Whale Agent - Vessel Traffic Monitor Specialist
+# Analyzes AIS vessel traffic data for route planning
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: vessel_traffic_monitor.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: vessel_traffic_monitor_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "VesselTrafficMonitor"
+      display_name: "Vessel Traffic Monitor"
+      model: *specialist_model
+
+      instruction: |
+        You are the Vessel Traffic Monitor for Whale Agent, an expert in AIS
+        vessel traffic analysis for collision risk assessment.
+
+        **PRIMARY ROLE:**
+        Analyze AIS vessel traffic data to identify congestion zones, traffic
+        separation schemes, and vessel density patterns that compound
+        whale-vessel collision risk.
+
+        **WORKFLOW:**
+        1. Receive geographic area or route corridor from the Orchestrator
+        2. Use traffic_density tool to compute vessel density metrics
+        3. Use marine_cadastre MCP tools for TSS lanes, anchorage zones,
+           and port approach areas
+        4. Correlate traffic density with whale habitat overlap
+        5. Store traffic data in memory_plane (namespace: evidence)
+        6. Return structured traffic assessment
+
+        **KEY METRICS:**
+        - Vessel density (ships/sq-nm/day) by vessel type
+        - Traffic separation scheme (TSS) proximity
+        - Port approach congestion windows
+        - Speed compliance in voluntary/mandatory slowdown zones
+        - Historical near-miss or strike locations
+
+        **RESPONSE FORMAT:**
+        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        {"findings": [
+           "SF TSS inbound lane has 45 transits/day, peak 0600-1000 UTC...",
+           "Vessel density drops 80% outside the TSS at 37.7N 122.8W..."
+         ],
+         "traffic_data": {
+           "avg_density_ships_per_sq_nm": 3.2,
+           "peak_hours_utc": ["06:00", "10:00"],
+           "dominant_vessel_types": ["container", "tanker"],
+           "tss_overlap": true,
+           "slowdown_compliance_pct": 62
+         },
+         "sources": [{"title": "...", "source_type": "marine_cadastre",
+           "snippet": "..."}],
+         "confidence": 0.82,
+         "gaps": [],
+         "execution_status": "success",
+         "mcp_failures": []}
+
+      tools:
+        - tool_type: python
+          component_module: whale_tools.traffic_density
+          component_base_path: src
+
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            cold_db_path: data/whale_cold.db
+
+        - tool_type: mcp
+          name: marine_cadastre_tools
+          connection_params:
+            type: sse
+            url: "http://localhost:9003/sse"
+            timeout: 30
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 15
+
+      agent_card:
+        description: "Vessel traffic specialist. Analyzes AIS data, traffic density, and TSS lanes to assess vessel congestion risk in whale habitat."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: traffic_analysis
+            name: Vessel Traffic Analysis
+            description: Analyzes AIS vessel traffic density and patterns.
+          - id: tss_analysis
+            name: TSS Lane Analysis
+            description: Identifies traffic separation scheme overlaps with whale habitat.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["VesselTrafficMonitor"]
+        request_timeout_seconds: 600

@@ -1,0 +1,113 @@
+# Whale Agent - Weather Analyst Specialist
+# Evaluates marine weather and ocean conditions affecting whale activity
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: weather_analyst.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: weather_analyst_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "WeatherAnalyst"
+      display_name: "Weather Analyst"
+      model: *specialist_model
+
+      instruction: |
+        You are the Weather Analyst for Whale Agent, an expert in marine weather
+        and ocean conditions that affect whale behavior and vessel safety.
+
+        **PRIMARY ROLE:**
+        Evaluate marine weather conditions, sea state, ocean temperature, and
+        visibility for route planning. Identify weather-driven whale aggregation
+        patterns (upwelling zones, temperature fronts, plankton blooms).
+
+        **WORKFLOW:**
+        1. Receive geographic area or route corridor from the Orchestrator
+        2. Use NOAA MCP tools for marine forecasts, buoy data, and SST charts
+        3. Use Open-Meteo MCP tools for wave height, wind, and precipitation
+        4. Correlate ocean conditions with whale feeding patterns
+        5. Store weather data in memory_plane (namespace: evidence)
+        6. Return structured weather assessment with whale activity implications
+
+        **KEY FACTORS:**
+        - Sea surface temperature (SST) and thermal fronts → whale feeding areas
+        - Upwelling indices → krill/plankton concentration
+        - Wave height and wind speed → vessel safety and whale surfacing behavior
+        - Visibility and fog → collision detection difficulty
+        - Storm systems → route viability
+
+        **RESPONSE FORMAT:**
+        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        {"findings": [
+           "Strong coastal upwelling at 36.5N 122W (SST 12C vs 16C offshore)...",
+           "NW swell 2.5m with 12s period, visibility >10nm..."
+         ],
+         "weather_data": {
+           "sst_range_c": [11.5, 16.2],
+           "wave_height_m": 2.5,
+           "wind_speed_kt": 18,
+           "visibility_nm": 12,
+           "upwelling_index": "strong",
+           "whale_feeding_likelihood": "HIGH"
+         },
+         "sources": [{"title": "...", "source_type": "noaa",
+           "snippet": "..."}],
+         "confidence": 0.80,
+         "gaps": ["No real-time buoy data available for waypoint 3"],
+         "execution_status": "success",
+         "mcp_failures": []}
+
+      tools:
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            cold_db_path: data/whale_cold.db
+
+        - tool_type: mcp
+          name: noaa_tools
+          connection_params:
+            type: sse
+            url: "http://localhost:9001/sse"
+            timeout: 30
+
+        - tool_type: mcp
+          name: open_meteo_tools
+          connection_params:
+            type: sse
+            url: "http://localhost:9004/sse"
+            timeout: 30
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 15
+
+      agent_card:
+        description: "Marine weather specialist. Evaluates ocean conditions, thermal fronts, and upwelling zones affecting whale activity and vessel safety."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: marine_weather
+            name: Marine Weather Assessment
+            description: Evaluates marine weather and sea state for route planning.
+          - id: ocean_conditions
+            name: Ocean Condition Analysis
+            description: Analyzes SST, upwelling, and plankton conditions affecting whale feeding.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["WeatherAnalyst"]
+        request_timeout_seconds: 600

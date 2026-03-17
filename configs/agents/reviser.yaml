@@ -1,0 +1,92 @@
+# Whale Agent - Reviser (GVR Loop)
+# Surgical corrections to route recommendations based on verifier feedback
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: reviser.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: reviser_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "Reviser"
+      display_name: "Reviser"
+      model: *reviser_model
+
+      instruction: |
+        You are the Reviser for Whale Agent. You receive a draft route
+        recommendation and verification feedback, then produce a corrected version.
+
+        **REVISION PROTOCOL:**
+        1. Review the verification report for flagged issues
+        2. For CRITICAL issues:
+           - Correct risk scores that don't match source data
+           - Add missing high-risk zones to route recommendations
+           - Fix species data errors (wrong species, wrong season)
+           - Adjust speed recommendations for underestimated risk
+        3. For MINOR issues:
+           - Soften language for weakly supported estimates
+           - Add qualifying language ("estimated", "approximate")
+           - Improve data-recommendation alignment
+        4. Use memory_plane to retrieve original evidence for corrections
+        5. Use report_generator to re-format the corrected recommendation
+        6. Preserve the original report structure and mode
+
+        **IMPORTANT:**
+        - Make minimal, surgical changes — do not rewrite the entire recommendation
+        - Never add risk zones without evidence
+        - Never fabricate species sighting data
+        - Document each change made in a revision log
+        - If unable to fix a critical issue, flag it for the orchestrator
+
+        **RESPONSE FORMAT:**
+        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        {"revised_recommendation": "...",
+         "revision_log": [
+           {"issue": "Missing Channel Islands NMS risk zone",
+            "action": "Added CRITICAL risk segment for 34.0N-34.3N corridor",
+            "severity": "CRITICAL"}
+         ],
+         "changes_made": 2,
+         "unresolved_issues": []}
+
+      tools:
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            cold_db_path: data/whale_cold.db
+
+        - tool_type: python
+          component_module: whale_tools.report_generator
+          component_base_path: src
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 10
+
+      agent_card:
+        description: "Reviser agent for the GVR loop. Makes surgical corrections to route recommendations based on verifier feedback."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: recommendation_revision
+            name: Recommendation Revision
+            description: Corrects route recommendations and risk assessments based on verification feedback.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["Reviser"]
+        request_timeout_seconds: 600

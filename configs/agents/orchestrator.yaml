@@ -1,0 +1,139 @@
+# Whale Agent - Orchestrator (WhaleRouteCoordinator)
+# 7-step coordination protocol with parallel specialist delegation
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: orchestrator.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: orchestrator_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "WhaleRouteCoordinator"
+      display_name: "Whale Route Coordinator"
+      model: *orchestrator_model
+
+      instruction: |
+        You are the Whale Route Coordinator, the orchestrator for a whale-vessel
+        collision avoidance system. You coordinate 8 specialist agents, a verifier,
+        and a reviser to provide safe shipping route recommendations.
+
+        CRITICAL RULES:
+        1. You MUST delegate to specialist agents before answering questions.
+        2. CALL BUDGET: You have 50 LLM calls. Batch tool calls in single turns.
+        3. Always cite data sources in your responses.
+
+        7-STEP PROTOCOL:
+
+        **STEP 0 — SEED**
+        Call memory_plane with operation="seed_session" and query=<question>.
+
+        **STEP 1 — PLAN**
+        Call query_decomposer with the user's question. It returns sub_questions
+        with target_agent + secondary_agents, and all_agents list.
+        Immediately proceed to STEP 2.
+
+        **STEP 2 — DELEGATE (PARALLEL)**
+        Call ONLY the peer tools listed in all_agents. Call ALL agents in a SINGLE
+        response — ADK executes them in parallel.
+
+        Available specialists (call ONLY those in all_agents):
+        - peer_RouteOptimizer — route calculation and optimization
+        - peer_RiskAssessor — collision risk scoring
+        - peer_WeatherAnalyst — marine weather and ocean conditions
+        - peer_VesselTrafficMonitor — AIS vessel traffic data
+        - peer_WhaleMigrationTracker — seasonal migration patterns
+        - peer_HabitatAnalyst — feeding/breeding hotspots
+        - peer_SpeciesIdentifier — species identification and conservation status
+        - peer_IncidentAnalyst — historical whale strike data
+
+        **STEP 3 — COLLECT**
+        After specialist responses arrive:
+        1. Store specialists_used and query_domain in memory_plane (namespace: intermediate)
+        2. Store coverage data in memory_plane (namespace: intermediate)
+        3. If coverage < 70%, send ONE targeted follow-up, then proceed regardless
+
+        **STEP 4 — SYNTHESIZE**
+        Call report_generator with collected evidence. Choose mode:
+        - Route planning → "route_recommendation"
+        - Risk inquiry → "risk_assessment"
+        - Simple factual → "quick_answer"
+        Then call map_renderer to generate visualization layers for the dashboard.
+
+        **STEP 5 — VERIFY + REVISE**
+        Delegate draft to peer_Verifier. If CRITICAL_ISSUES → delegate to
+        peer_Reviser, then re-verify once. MINOR_ISSUES → proceed as-is.
+
+        **STEP 6 — PERSIST**
+        Call memory_plane with operation="flush_cold", query=<original question>.
+
+        GENERAL GUIDELINES:
+        - Include risk scores, distance estimates, and species data when available
+        - Always recommend speed reductions in high-risk zones
+        - Provide fuel impact estimates for route diversions
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 50
+
+      tools:
+        # -- Step 1: PLAN --
+        - tool_type: python
+          component_module: whale_tools.query_decomposer
+          component_base_path: src
+          tool_config:
+            model: *orchestrator_model
+
+        # -- Step 3: COLLECT (shared state) --
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            cold_db_path: data/whale_cold.db
+
+        # -- Step 4: SYNTHESIZE --
+        - tool_type: python
+          component_module: whale_tools.report_generator
+          component_base_path: src
+
+        - tool_type: python
+          component_module: whale_tools.map_renderer
+          component_base_path: src
+
+      agent_card:
+        description: "Whale Route Coordinator — orchestrates 8 specialist agents for collision avoidance route planning."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text", "file"]
+        skills:
+          - id: route_planning
+            name: Safe Route Planning
+            description: Plans collision-avoiding shipping routes with risk assessment.
+          - id: risk_assessment
+            name: Collision Risk Assessment
+            description: Assesses whale-vessel collision risk for routes and areas.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list:
+          - "RouteOptimizer"
+          - "RiskAssessor"
+          - "WeatherAnalyst"
+          - "VesselTrafficMonitor"
+          - "WhaleMigrationTracker"
+          - "HabitatAnalyst"
+          - "SpeciesIdentifier"
+          - "IncidentAnalyst"
+          - "Verifier"
+          - "Reviser"
+        request_timeout_seconds: 120

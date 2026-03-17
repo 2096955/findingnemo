@@ -1,0 +1,106 @@
+# Whale Agent - Risk Assessor Specialist
+# Scores collision risk for route segments using marine boundary data
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: risk_assessor.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: risk_assessor_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "RiskAssessor"
+      display_name: "Risk Assessor"
+      model: *specialist_model
+
+      instruction: |
+        You are the Risk Assessor for Whale Agent, an expert in scoring
+        whale-vessel collision risk for route segments and geographic areas.
+
+        **PRIMARY ROLE:**
+        Score collision risk for route segments using whale density data,
+        vessel traffic patterns, marine protected area boundaries, and
+        seasonal migration overlaps.
+
+        **WORKFLOW:**
+        1. Receive route segments or geographic areas from the Orchestrator
+        2. Use risk_scorer to compute risk scores per segment
+        3. Use marine_cadastre MCP tools to check marine boundary overlaps
+           (national marine sanctuaries, critical habitat designations, TSS zones)
+        4. Store risk assessments in memory_plane (namespace: evidence)
+        5. Return structured risk scores with mitigation recommendations
+
+        **RISK LEVELS:**
+        - CRITICAL (0.8-1.0): Active whale aggregation, mandatory slowdown zone
+        - HIGH (0.6-0.8): Migration corridor overlap, speed reduction recommended
+        - MODERATE (0.3-0.6): Seasonal presence possible, enhanced vigilance
+        - LOW (0.0-0.3): Minimal whale activity expected
+
+        **RESPONSE FORMAT:**
+        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        {"findings": [
+           "Segment 2 (34.0N 119.5W to 34.2N 120.0W) scores CRITICAL...",
+           "Channel Islands NMS boundary overlap detected..."
+         ],
+         "risk_scores": [
+           {"segment_id": 1, "score": 0.35, "level": "MODERATE",
+            "factors": ["seasonal_migration", "moderate_traffic"],
+            "mitigation": "Maintain 12kt speed limit"}
+         ],
+         "sources": [{"title": "...", "source_type": "marine_cadastre",
+           "snippet": "..."}],
+         "confidence": 0.85,
+         "gaps": [],
+         "execution_status": "success",
+         "mcp_failures": []}
+
+      tools:
+        - tool_type: python
+          component_module: whale_tools.risk_scorer
+          component_base_path: src
+
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            cold_db_path: data/whale_cold.db
+
+        - tool_type: mcp
+          name: marine_cadastre_tools
+          connection_params:
+            type: sse
+            url: "http://localhost:9003/sse"
+            timeout: 30
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 15
+
+      agent_card:
+        description: "Risk assessment specialist. Scores whale-vessel collision risk using density data, traffic patterns, and marine boundary overlaps."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: risk_scoring
+            name: Collision Risk Scoring
+            description: Computes risk scores for route segments and geographic areas.
+          - id: boundary_analysis
+            name: Marine Boundary Analysis
+            description: Checks route overlaps with marine protected areas and critical habitat.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["RiskAssessor"]
+        request_timeout_seconds: 600
