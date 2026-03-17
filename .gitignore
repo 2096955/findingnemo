@@ -29,4 +29,5 @@ Thumbs.db
 data/*.csv
 data/*.parquet
 data/*.json
+!data/sample_ais_tracks.json
 !data/.gitkeep
