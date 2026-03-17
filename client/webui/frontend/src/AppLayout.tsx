@@ -6,7 +6,7 @@ import { MobileBottomNav, type MobileTabId } from "@/lib/components/navigation";
 import { PWAUpdateBanner, OfflineIndicator } from "@/lib/components/pwa";
 import { TriageFloatingBanner } from "@/lib/components/chat/triage";
 import { SelectionContextMenu, useTextSelection } from "@/lib/components/chat/selection";
-import { ChatProvider } from "@/lib/providers";
+import { ChatProvider, DashboardDataProvider } from "@/lib/providers";
 import { useAuthContext, useBeforeUnload, useChatContext, useConfigContext, useIsMobile, useOnlineStatus } from "@/lib/hooks";
 import { usePWA } from "@/lib/hooks/usePWA";
 import { useBannerPriority } from "@/lib/hooks/useBannerPriority";
@@ -207,9 +207,11 @@ function AppLayoutContent() {
 
 function AppLayout() {
     return (
-        <ChatProvider>
-            <AppLayoutContent />
-        </ChatProvider>
+        <DashboardDataProvider>
+            <ChatProvider>
+                <AppLayoutContent />
+            </ChatProvider>
+        </DashboardDataProvider>
     );
 }
 

@@ -132,4 +132,10 @@ trap cleanup SIGTERM SIGINT EXIT
 echo "[WhaleAgent] Starting sam run with ${#REQUIRED_CONFIGS[@]} configs..."
 sam run --system-env "${REQUIRED_CONFIGS[@]}" &
 SAM_PID=$!
+
+# ---------------------------------------------------------------------------
+# 7. Seed default prompts once gateway is ready (background, non-blocking)
+# ---------------------------------------------------------------------------
+python /app/scripts/seed_prompts.py &
+
 wait $SAM_PID

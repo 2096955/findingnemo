@@ -9,3 +9,4 @@ export * from "./ProjectProvider";
 export * from "./QueryProvider";
 export * from "./QueryClient";
 export * from "./SSEProvider";
+export * from "./DashboardDataProvider";

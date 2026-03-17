@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Tokyo → Los Angeles Route",
+    "description": "Trans-Pacific route optimised to avoid blue whale feeding zones in the Pacific",
+    "category": "Route Planning",
+    "command": "tokyo-la",
+    "initial_prompt": "Plan a safe shipping route from Tokyo, Japan to Los Angeles, USA. Optimise the route to minimise whale-vessel collision risk, particularly for blue whales in the North Pacific. Include: risk heatmap data, whale sighting locations, shipping lane traffic, migration corridors, speed reduction recommendations, and fuel/delay impact estimates. Return all map visualisation data as GeoJSON FeatureCollections with render_type metadata."
+  },
+  {
+    "name": "London → New York Route",
+    "description": "North Atlantic crossing avoiding fin whale and right whale critical habitat",
+    "category": "Route Planning",
+    "command": "london-ny",
+    "initial_prompt": "Plan a safe shipping route from London, UK (Port of Tilbury) to New York, USA. The North Atlantic crossing must account for fin whales and critically endangered North Atlantic right whales. Include: risk heatmap data, whale sighting locations, shipping lane traffic, migration corridors, recommended speed reductions in NARW critical habitat, and fuel/delay impact estimates. Return all map visualisation data as GeoJSON FeatureCollections with render_type metadata."
+  },
+  {
+    "name": "Sydney → Singapore Route",
+    "description": "Indo-Pacific route accounting for humpback whale migration corridors",
+    "category": "Route Planning",
+    "command": "sydney-sg",
+    "initial_prompt": "Plan a safe shipping route from Sydney, Australia to Singapore. Account for humpback whale migration corridors along the Australian east coast and through the Coral Sea. Include: risk heatmap data, whale sighting locations, shipping lane traffic, migration corridors, speed reduction recommendations, and fuel/delay impact estimates. Return all map visualisation data as GeoJSON FeatureCollections with render_type metadata."
+  },
+  {
+    "name": "San Francisco → Seattle Route",
+    "description": "Pacific Coast route through humpback and grey whale habitat",
+    "category": "Route Planning",
+    "command": "sf-seattle",
+    "initial_prompt": "Plan a safe shipping route from San Francisco, USA to Seattle, USA along the Pacific Coast. This route transits through important humpback whale and grey whale habitat including the Gulf of the Farallones National Marine Sanctuary. Include: risk heatmap data, whale sightings, speed reduction zones, and fuel/delay impact estimates. Return all map visualisation data as GeoJSON FeatureCollections with render_type metadata."
+  },
+  {
+    "name": "Collision Risk Assessment",
+    "description": "Assess whale-vessel collision risk for a given area or voyage",
+    "category": "Risk Assessment",
+    "command": "risk-check",
+    "initial_prompt": "Assess the current whale-vessel collision risk for my planned voyage. Provide: an overall risk score (0–100), breakdown by species, seasonal risk factors, current whale density estimates, recommended speed reductions, and any mandatory slow-speed zones (e.g. IMO seasonal management areas, NOAA speed restrictions). Include data sources and confidence levels."
+  },
+  {
+    "name": "Blue Whale Hotspot Map",
+    "description": "Current global blue whale feeding and migration hotspots",
+    "category": "Species Intelligence",
+    "command": "blue-whales",
+    "initial_prompt": "Identify current blue whale hotspots globally. For each hotspot provide: location coordinates, suitability level (high/medium/low), typical season, feeding or migration classification, and the shipping lanes that intersect or pass nearby. Return hotspot data as GeoJSON FeatureCollections with render_type metadata so they can be visualised on the map. Include recent GBIF sighting data and NOAA habitat assessments."
+  },
+  {
+    "name": "Seasonal Migration Briefing",
+    "description": "Current season whale migration patterns and active corridors",
+    "category": "Species Intelligence",
+    "command": "migration-brief",
+    "initial_prompt": "Provide a seasonal whale migration briefing for the current date. Include: which species are currently migrating, their primary corridors and direction of travel, peak activity zones, recommended avoidance areas for the next 30 days, and any unusual aggregations reported. Return migration corridor data as GeoJSON FeatureCollections with render_type 'migration_corridors' for map visualisation."
+  },
+  {
+    "name": "Port Entry Risk Check",
+    "description": "Whale collision risk assessment for approaching and entering a major port",
+    "category": "Risk Assessment",
+    "command": "port-risk",
+    "initial_prompt": "Assess the whale collision risk for vessels approaching and entering a major port. Evaluate: whale species present within 50 nautical miles of the port, seasonal patterns, recommended approach corridors that minimise risk, mandatory vessel speed restrictions near the port, and any active whale alerts or closures. Provide a risk score and specific recommendations for safe port entry."
+  }
+]

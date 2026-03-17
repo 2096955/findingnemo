@@ -4,6 +4,7 @@ import { MapView, type LayerVisibility, type RiskPoint, type Sighting, type Rout
 import { Sidebar, type RouteQuery, type RiskSummary, type SpeedAlert } from "./Sidebar";
 import { api } from "@/lib/api/client";
 import { parseAgentResponse } from "@/lib/utils/parseAgentResponse";
+import { useDashboardData } from "@/lib/hooks";
 
 /** Generate a simple UUID v4. */
 function uuid(): string {
@@ -14,6 +15,9 @@ function uuid(): string {
  * DashboardPage composes the MapView and Sidebar into a full-width dashboard layout.
  * Sends route planning queries to the SAM gateway orchestrator and populates the map
  * with real agent data via SSE streaming.
+ *
+ * Also consumes shared data from ChatProvider — when a chat response contains GeoJSON
+ * map layers, they are automatically pushed here via DashboardDataContext.
  */
 export function DashboardPage() {
     // Layer visibility state
@@ -29,17 +33,36 @@ export function DashboardPage() {
     const [selectedSeason, setSelectedSeason] = useState("All Seasons");
     const [selectedSpecies, setSelectedSpecies] = useState("All Species");
 
-    // Data state - populated by agent responses
-    const [riskData, setRiskData] = useState<RiskPoint[]>([]);
-    const [sightings, setSightings] = useState<Sighting[]>([]);
-    const [routes, setRoutes] = useState<Route[]>([]);
-    const [shippingLanes, setShippingLanes] = useState<Route[]>([]);
-    const [migrationCorridors, setMigrationCorridors] = useState<Route[]>([]);
-    const [riskSummary, setRiskSummary] = useState<RiskSummary | null>(null);
-    const [alerts, setAlerts] = useState<SpeedAlert[]>([]);
+    // Data state - populated by agent responses (local queries)
+    const [localRiskData, setLocalRiskData] = useState<RiskPoint[]>([]);
+    const [localSightings, setLocalSightings] = useState<Sighting[]>([]);
+    const [localRoutes, setLocalRoutes] = useState<Route[]>([]);
+    const [localShippingLanes, setLocalShippingLanes] = useState<Route[]>([]);
+    const [localMigrationCorridors, setLocalMigrationCorridors] = useState<Route[]>([]);
+    const [localRiskSummary, setLocalRiskSummary] = useState<RiskSummary | null>(null);
+    const [localAlerts, setLocalAlerts] = useState<SpeedAlert[]>([]);
     const [isQuerying, setIsQuerying] = useState(false);
     const [statusText, setStatusText] = useState("");
     const [error, setError] = useState<string | null>(null);
+
+    // Shared data from chat responses
+    const { chatDashboardData } = useDashboardData();
+
+    // Merge: local query data takes priority; fall back to chat data
+    const riskData = localRiskData.length > 0 ? localRiskData : (chatDashboardData?.riskData ?? []);
+    const sightings = localSightings.length > 0 ? localSightings : (chatDashboardData?.sightings ?? []);
+    const routes = localRoutes.length > 0 ? localRoutes : (chatDashboardData?.routes ?? []);
+    const shippingLanes = localShippingLanes.length > 0 ? localShippingLanes : (chatDashboardData?.shippingLanes ?? []);
+    const migrationCorridors = localMigrationCorridors.length > 0 ? localMigrationCorridors : (chatDashboardData?.migrationCorridors ?? []);
+    const riskSummary = localRiskSummary ?? chatDashboardData?.riskSummary ?? null;
+    const alerts = localAlerts.length > 0 ? localAlerts : (chatDashboardData?.alerts ?? []);
+
+    // Track whether we're showing chat data (for the status banner)
+    const hasChatData = chatDashboardData !== null && (
+        (chatDashboardData.riskData.length > 0 || chatDashboardData.sightings.length > 0
+            || chatDashboardData.routes.length > 0 || chatDashboardData.riskSummary !== null)
+    );
+    const isShowingChatData = hasChatData && localRiskData.length === 0 && localRoutes.length === 0;
 
     // Session tracking for multi-turn conversations
     const sessionIdRef = useRef<string>("");
@@ -77,13 +100,13 @@ export function DashboardPage() {
     const processResponse = useCallback((fullText: string) => {
         const parsed = parseAgentResponse(fullText);
 
-        if (parsed.riskData.length > 0) setRiskData(parsed.riskData);
-        if (parsed.sightings.length > 0) setSightings(parsed.sightings);
-        if (parsed.routes.length > 0) setRoutes(parsed.routes);
-        if (parsed.shippingLanes.length > 0) setShippingLanes(parsed.shippingLanes);
-        if (parsed.migrationCorridors.length > 0) setMigrationCorridors(parsed.migrationCorridors);
-        if (parsed.riskSummary) setRiskSummary(parsed.riskSummary);
-        if (parsed.alerts.length > 0) setAlerts(parsed.alerts);
+        if (parsed.riskData.length > 0) setLocalRiskData(parsed.riskData);
+        if (parsed.sightings.length > 0) setLocalSightings(parsed.sightings);
+        if (parsed.routes.length > 0) setLocalRoutes(parsed.routes);
+        if (parsed.shippingLanes.length > 0) setLocalShippingLanes(parsed.shippingLanes);
+        if (parsed.migrationCorridors.length > 0) setLocalMigrationCorridors(parsed.migrationCorridors);
+        if (parsed.riskSummary) setLocalRiskSummary(parsed.riskSummary);
+        if (parsed.alerts.length > 0) setLocalAlerts(parsed.alerts);
     }, []);
 
     /**
@@ -242,17 +265,22 @@ export function DashboardPage() {
             />
             <div className="relative flex-1">
                 {/* Status overlay */}
-                {(statusText || error) && (
+                {(statusText || error || isShowingChatData) && (
                     <div className="absolute left-4 top-4 z-10 max-w-sm rounded-lg bg-background/90 px-4 py-2 shadow-lg backdrop-blur-sm"
                          style={{ borderColor: "var(--border)", border: "1px solid" }}>
                         {error ? (
                             <p className="text-sm" style={{ color: "var(--destructive)" }}>{error}</p>
-                        ) : (
+                        ) : statusText ? (
                             <div className="flex items-center gap-2">
                                 <div className="h-2 w-2 animate-pulse rounded-full" style={{ backgroundColor: "var(--primary)" }} />
                                 <p className="text-sm text-muted-foreground">{statusText}</p>
                             </div>
-                        )}
+                        ) : isShowingChatData ? (
+                            <div className="flex items-center gap-2">
+                                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--primary)" }} />
+                                <p className="text-sm text-muted-foreground">Showing data from chat query</p>
+                            </div>
+                        ) : null}
                     </div>
                 )}
                 <MapView

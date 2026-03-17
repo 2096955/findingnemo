@@ -38,3 +38,4 @@ export * from "./useModelSelection";
 export * from "./usePWA";
 export * from "./useBannerPriority";
 export * from "./useGraphData";
+export * from "./useDashboardData";

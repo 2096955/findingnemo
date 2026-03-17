@@ -84,10 +84,28 @@ apps:
         Call memory_plane with operation="flush_cold", query=<original question>,
         and specialists_used=<comma-separated list of specialists that responded>.
 
+        **STEP 7 — RESPOND**
+        Your final response to the user MUST be formatted as human-readable Markdown.
+        NEVER return raw JSON as the final answer. Specialists return JSON for
+        machine processing, but your job is to translate that into a clear,
+        well-structured report the user can read.
+
+        Format your final response as follows:
+        - Use ## headers for major sections (Route Summary, Risk Assessment, etc.)
+        - Use bullet points with **bold labels** for key data
+        - Include a risk score (0-100) prominently near the top
+        - List species at risk with conservation status
+        - Provide speed reduction recommendations in a clear table or list
+        - End with "Avoid Areas" as a bulleted list with coordinates
+        - Include any GeoJSON from map_renderer in fenced ```json blocks
+          AFTER the human-readable report (not instead of it)
+
         GENERAL GUIDELINES:
         - Include risk scores, distance estimates, and species data when available
         - Always recommend speed reductions in high-risk zones
         - Provide fuel impact estimates for route diversions
+        - If report_generator returns a formatted_report, use that as the basis
+          for your response — do NOT discard it and return raw JSON instead
 
       session_service: *default_session_service
       artifact_service: *default_artifact_service

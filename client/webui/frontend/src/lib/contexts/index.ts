@@ -8,3 +8,4 @@ export * from "./SidePanelContext";
 export * from "./SSEContext";
 export * from "./TaskContext";
 export * from "./ThemeContext";
+export * from "./DashboardDataContext";

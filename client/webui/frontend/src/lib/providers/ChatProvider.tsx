@@ -9,7 +9,8 @@ const v4 = () => uuidv4({});
 
 import { api, RateLimitError } from "@/lib/api";
 import { AgentContext, ChatContext, NotificationContext, SidePanelContext, type ChatContextValue, type PendingPromptData, type TriageProgressData } from "@/lib/contexts";
-import { useConfigContext, useArtifacts, useAgentCards, useTaskContext, useErrorDialog, useTitleGeneration, useBackgroundTaskMonitor, useArtifactPreview, useArtifactOperations, useAuthContext } from "@/lib/hooks";
+import { useConfigContext, useArtifacts, useAgentCards, useTaskContext, useErrorDialog, useTitleGeneration, useBackgroundTaskMonitor, useArtifactPreview, useArtifactOperations, useAuthContext, useDashboardData } from "@/lib/hooks";
+import { parseAgentResponse } from "@/lib/utils/parseAgentResponse";
 import { resolveAgentName } from "@/lib/config/modelOptions";
 import { useProjectContext, registerProjectDeletedCallback } from "@/lib/providers";
 import { getErrorMessage, fileToBase64, migrateTask, CURRENT_SCHEMA_VERSION, getApiBearerToken, internalToDisplayText } from "@/lib/utils";
@@ -53,6 +54,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     const { registerTaskEarly } = useTaskContext();
     const { ErrorDialog, setError } = useErrorDialog();
     const { userInfo } = useAuthContext();
+    const { setChatDashboardData } = useDashboardData();
 
     // State Variables from useChat
     const [sessionId, setSessionId] = useState<string>("");
@@ -1717,6 +1719,21 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                                 ?.filter(p => p.kind === "text")
                                 .map(p => (p as TextPart).text)
                                 .join("") || "";
+
+                        // Push GeoJSON data from agent response to dashboard context
+                        const agentMessages = taskMessagesToSave.filter(m => !m.isUser);
+                        const fullAgentText = agentMessages
+                            .flatMap(m => m.parts?.filter(p => p.kind === "text").map(p => (p as TextPart).text) ?? [])
+                            .join("\n");
+                        if (fullAgentText) {
+                            const parsed = parseAgentResponse(fullAgentText);
+                            const hasMapData = parsed.riskData.length > 0 || parsed.sightings.length > 0
+                                || parsed.routes.length > 0 || parsed.shippingLanes.length > 0
+                                || parsed.migrationCorridors.length > 0 || parsed.riskSummary !== null;
+                            if (hasMapData) {
+                                setChatDashboardData(parsed);
+                            }
+                        }
 
                         // Determine task status
                         const hasError = taskMessagesToSave.some(m => m.isError);

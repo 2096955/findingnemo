@@ -21,6 +21,8 @@ RUN mkdir -p /app/data
 # Runtime files
 COPY configs/ configs/
 COPY data/sample_ais_tracks.json data/sample_ais_tracks.json
+COPY data/seed_prompts.json data/seed_prompts.json
+COPY scripts/seed_prompts.py scripts/seed_prompts.py
 # NOTE: Do NOT copy .env — it may set FASTAPI_HOST=localhost and FASTAPI_PORT=8000
 # which conflicts with Cloud Run's PORT=8080. Use --system-env + Cloud Run env vars.
 COPY infra/start_whale.sh /app/start_whale.sh

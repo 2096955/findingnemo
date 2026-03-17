@@ -1,0 +1,6 @@
+{
+  "id": "@whale-agent/whale-agent-ui",
+  "name": "Whale Agent UI",
+  "description": "Whale Agent UI - Maritime whale strike risk dashboard with Deck.gl map visualization",
+  "version": "1.0.0"
+}
