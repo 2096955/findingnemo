@@ -12,6 +12,7 @@ from google.adk.tools import ToolContext
 from google.genai import types as adk_types
 
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
+from whale_common.geo_utils import haversine_km
 
 log = logging.getLogger(__name__)
 
@@ -19,18 +20,9 @@ EARTH_RADIUS_KM = 6371.0
 KM_PER_NM = 1.852
 
 
-def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Compute great-circle distance in km between two points."""
-    r1, r2 = math.radians(lat1), math.radians(lat2)
-    dlat = math.radians(lat2 - lat1)
-    dlng = math.radians(lng2 - lng1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(r1) * math.cos(r2) * math.sin(dlng / 2) ** 2
-    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
-
-
 def _haversine_nm(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """Compute great-circle distance in nautical miles."""
-    return _haversine_km(lat1, lng1, lat2, lng2) / KM_PER_NM
+    return haversine_km(lat1, lng1, lat2, lng2) / KM_PER_NM
 
 
 def _intermediate_point(lat1: float, lng1: float, lat2: float, lng2: float, fraction: float) -> tuple[float, float]:
@@ -54,7 +46,7 @@ def _intermediate_point(lat1: float, lng1: float, lat2: float, lng2: float, frac
 
 def _point_in_risk_zone(lat: float, lng: float, zone: dict) -> bool:
     """Check if a point falls within a risk zone radius."""
-    dist = _haversine_km(lat, lng, zone["lat"], zone["lng"])
+    dist = haversine_km(lat, lng, zone["lat"], zone["lng"])
     return dist < zone.get("radius_km", 50)
 
 

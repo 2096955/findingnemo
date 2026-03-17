@@ -74,13 +74,19 @@ def compute_risk(
     score = max(0.0, min(1.0, round(score, 4)))
 
     # Classification
-    if score >= 0.7:
+    if score >= 0.8:
+        risk_level = "CRITICAL"
+        recommendation = (
+            "Immediate halt or maximum speed reduction required. "
+            "Mandatory route diversion away from critical whale zone."
+        )
+    elif score >= 0.6:
         risk_level = "HIGH"
         recommendation = (
             "Immediate speed reduction to 10 knots or less recommended. "
             "Consider route diversion to avoid high-density whale area."
         )
-    elif score >= 0.4:
+    elif score >= 0.3:
         risk_level = "MODERATE"
         recommendation = (
             "Reduce speed to 14 knots or less. Increase lookout watch. "

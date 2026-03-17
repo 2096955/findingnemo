@@ -1,8 +1,12 @@
 import React, { useState, useCallback, useMemo } from "react";
 import Map from "react-map-gl/maplibre";
 import DeckGL from "@deck.gl/react";
-import { HeatmapLayer, ScatterplotLayer, PathLayer } from "@deck.gl/layers";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { createRiskHeatmapLayer } from "./RiskHeatmapLayer";
+import { createWhaleMarkerLayer } from "./WhaleMarkerLayer";
+import { createShippingLaneLayer } from "./ShippingLaneLayer";
+import { createRouteLayer } from "./RouteLayer";
+import { createMigrationCorridorLayer } from "./MigrationCorridorLayer";
 
 const INITIAL_VIEW_STATE = {
     latitude: 37.8,
@@ -91,81 +95,23 @@ export function MapView({
         const result: unknown[] = [];
 
         if (layerVisibility.riskHeatmap && riskData.length > 0) {
-            result.push(
-                new HeatmapLayer({
-                    id: "risk-heatmap",
-                    data: riskData,
-                    getPosition: (d: RiskPoint) => [d.lng, d.lat],
-                    getWeight: (d: RiskPoint) => d.risk,
-                    radiusPixels: 60,
-                    intensity: 1,
-                    threshold: 0.1,
-                    colorRange: [
-                        [65, 182, 196],
-                        [127, 205, 187],
-                        [199, 233, 180],
-                        [255, 255, 204],
-                        [254, 178, 76],
-                        [240, 59, 32],
-                    ],
-                })
-            );
+            result.push(createRiskHeatmapLayer({ data: riskData }));
         }
 
         if (layerVisibility.sightings && sightings.length > 0) {
-            result.push(
-                new ScatterplotLayer({
-                    id: "whale-sightings",
-                    data: sightings,
-                    getPosition: (d: Sighting) => [d.lng, d.lat],
-                    getRadius: (d: Sighting) => Math.max(d.count * 500, 1000),
-                    getFillColor: [0, 119, 182, 180],
-                    getLineColor: [0, 0, 0, 255],
-                    lineWidthMinPixels: 1,
-                    pickable: true,
-                    onClick: onSightingClick as ((info: unknown) => void) | undefined,
-                })
-            );
+            result.push(createWhaleMarkerLayer({ data: sightings, onSightingClick }));
         }
 
         if (layerVisibility.shippingLanes && shippingLanes.length > 0) {
-            result.push(
-                new PathLayer({
-                    id: "shipping-lanes",
-                    data: shippingLanes,
-                    getPath: (d: Route) => d.path,
-                    getColor: [128, 128, 128, 100],
-                    getWidth: 2000,
-                    widthMinPixels: 1,
-                })
-            );
+            result.push(createShippingLaneLayer({ data: shippingLanes }));
         }
 
         if (layerVisibility.routes && routes.length > 0) {
-            result.push(
-                new PathLayer({
-                    id: "recommended-route",
-                    data: routes,
-                    getPath: (d: Route) => d.path,
-                    getColor: [16, 185, 129, 255],
-                    getWidth: 3000,
-                    widthMinPixels: 2,
-                })
-            );
+            result.push(createRouteLayer({ data: routes }));
         }
 
         if (layerVisibility.migrationCorridors && migrationCorridors.length > 0) {
-            result.push(
-                new PathLayer({
-                    id: "migration-corridors",
-                    data: migrationCorridors,
-                    getPath: (d: Route) => d.path,
-                    getColor: [99, 102, 241, 120],
-                    getWidth: 5000,
-                    widthMinPixels: 3,
-                    getDashArray: [8, 4],
-                })
-            );
+            result.push(createMigrationCorridorLayer({ data: migrationCorridors }));
         }
 
         return result;

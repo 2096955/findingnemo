@@ -30,6 +30,8 @@ interface SidebarProps {
     layerVisibility: LayerVisibility;
     onLayerVisibilityChange: (visibility: LayerVisibility) => void;
     isQuerying?: boolean;
+    statusText?: string;
+    error?: string | null;
     selectedSeason?: string;
     onSeasonChange?: (season: string) => void;
     selectedSpecies?: string;
@@ -62,6 +64,8 @@ export function Sidebar({
     layerVisibility,
     onLayerVisibilityChange,
     isQuerying = false,
+    statusText = "",
+    error = null,
     selectedSeason = "All Seasons",
     onSeasonChange,
     selectedSpecies = "All Species",
@@ -147,6 +151,12 @@ export function Sidebar({
                         {isQuerying ? "Planning..." : "Plan Route"}
                     </button>
                 </form>
+                {isQuerying && statusText && (
+                    <p className="mt-2 text-xs text-muted-foreground animate-pulse">{statusText}</p>
+                )}
+                {error && (
+                    <p className="mt-2 text-xs" style={{ color: "var(--destructive)" }}>{error}</p>
+                )}
             </div>
 
             {/* Season / Species Filters */}

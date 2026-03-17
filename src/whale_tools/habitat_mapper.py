@@ -4,7 +4,6 @@ Uses hardcoded known hotspot data for key whale habitats:
 Monterey Bay, Stellwagen Bank, Channel Islands, etc.
 """
 
-import math
 import logging
 from typing import Optional
 
@@ -12,10 +11,9 @@ from google.adk.tools import ToolContext
 from google.genai import types as adk_types
 
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
+from whale_common.geo_utils import haversine_km
 
 log = logging.getLogger(__name__)
-
-EARTH_RADIUS_KM = 6371.0
 
 # Known whale hotspots with coordinates and metadata
 _HOTSPOTS = [
@@ -130,15 +128,6 @@ _HOTSPOTS = [
 ]
 
 
-def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Compute great-circle distance in km."""
-    r1, r2 = math.radians(lat1), math.radians(lat2)
-    dlat = math.radians(lat2 - lat1)
-    dlng = math.radians(lng2 - lng1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(r1) * math.cos(r2) * math.sin(dlng / 2) ** 2
-    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
-
-
 def find_hotspots(
     latitude: float,
     longitude: float,
@@ -147,7 +136,7 @@ def find_hotspots(
     """Find whale habitat hotspots within radius of a location."""
     results = []
     for hotspot in _HOTSPOTS:
-        dist = _haversine_km(latitude, longitude, hotspot["lat"], hotspot["lng"])
+        dist = haversine_km(latitude, longitude, hotspot["lat"], hotspot["lng"])
         if dist <= radius_km:
             results.append({
                 **hotspot,

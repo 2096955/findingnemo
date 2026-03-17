@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 import os
-import sqlite3
 from typing import Optional
 
 from google.adk.tools import ToolContext
@@ -244,36 +243,23 @@ class MemoryPlaneTool(DynamicTool):
     # Cold store operations (simplified for PoC)
     # ------------------------------------------------------------------
 
-    def _get_cold_connection(self) -> sqlite3.Connection:
-        """Get a connection to the cold store SQLite database."""
-        db_path = self._cold_db_path
-        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        conn = sqlite3.connect(db_path)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS session_outcomes (
-                session_id TEXT PRIMARY KEY,
-                query_text TEXT,
-                query_domain TEXT,
-                specialists_used TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-        return conn
+    def _get_cold_connection(self):
+        from whale_tools.cold_store import get_connection
+        return get_connection(self._cold_db_path)
 
     async def _op_flush_cold(self, args: dict, session_id: str) -> dict:
         """Persist session data to cold store."""
         try:
             query_text = args.get("query", "")
             query_domain = args.get("query_domain", "general")
+            specialists_used = args.get("specialists_used", "")
 
             def _sync_flush():
                 conn = self._get_cold_connection()
                 try:
                     conn.execute(
-                        "INSERT OR REPLACE INTO session_outcomes (session_id, query_text, query_domain) VALUES (?, ?, ?)",
-                        (session_id, query_text, query_domain),
+                        "INSERT OR REPLACE INTO session_outcomes (session_id, query_text, query_domain, specialists_used) VALUES (?, ?, ?, ?)",
+                        (session_id, query_text, query_domain, specialists_used),
                     )
                     conn.commit()
                 finally:

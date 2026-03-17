@@ -1,0 +1,42 @@
+steps:
+  # Build Whale Agent frontend from source
+  - name: "node:22"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - "cd client/webui/frontend && npm ci --ignore-engines && npm run build"
+
+  # Copy built static/ to Docker build context
+  - name: "gcr.io/cloud-builders/docker"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - "rm -rf frontend-static && cp -r client/webui/frontend/static frontend-static"
+
+  # Docker build
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/whale-agent:$COMMIT_SHA"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/whale-agent:latest"
+      - "-f"
+      - "infra/Dockerfile"
+      - "."
+
+  # Push
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/whale-agent:$COMMIT_SHA"]
+
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/whale-agent:latest"]
+
+images:
+  - "gcr.io/$PROJECT_ID/whale-agent:$COMMIT_SHA"
+  - "gcr.io/$PROJECT_ID/whale-agent:latest"
+
+timeout: "1200s"
+
+options:
+  machineType: "E2_HIGHCPU_8"

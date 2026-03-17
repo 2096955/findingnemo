@@ -1,10 +1,19 @@
-import React, { useState, useCallback } from "react";
+// client/webui/frontend/src/components/Dashboard/DashboardPage.tsx
+import React, { useState, useCallback, useRef } from "react";
 import { MapView, type LayerVisibility, type RiskPoint, type Sighting, type Route } from "./MapView";
 import { Sidebar, type RouteQuery, type RiskSummary, type SpeedAlert } from "./Sidebar";
+import { api } from "@/lib/api/client";
+import { parseAgentResponse } from "@/lib/utils/parseAgentResponse";
+
+/** Generate a simple UUID v4. */
+function uuid(): string {
+    return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 /**
  * DashboardPage composes the MapView and Sidebar into a full-width dashboard layout.
- * It manages shared state (layer visibility, filters, risk data) between the map and sidebar.
+ * Sends route planning queries to the SAM gateway orchestrator and populates the map
+ * with real agent data via SSE streaming.
  */
 export function DashboardPage() {
     // Layer visibility state
@@ -29,105 +38,192 @@ export function DashboardPage() {
     const [riskSummary, setRiskSummary] = useState<RiskSummary | null>(null);
     const [alerts, setAlerts] = useState<SpeedAlert[]>([]);
     const [isQuerying, setIsQuerying] = useState(false);
+    const [statusText, setStatusText] = useState("");
+    const [error, setError] = useState<string | null>(null);
 
-    // Load demo data on first interaction to show the map is functional
-    const loadDemoData = useCallback(() => {
-        // Sample risk data along the US West Coast
-        setRiskData([
-            { lat: 37.8, lng: -122.4, risk: 0.8 },
-            { lat: 37.5, lng: -122.8, risk: 0.6 },
-            { lat: 36.8, lng: -122.0, risk: 0.9 },
-            { lat: 34.0, lng: -119.5, risk: 0.7 },
-            { lat: 34.4, lng: -120.5, risk: 0.85 },
-            { lat: 33.7, lng: -118.3, risk: 0.5 },
-            { lat: 38.3, lng: -123.1, risk: 0.75 },
-            { lat: 35.5, lng: -121.0, risk: 0.65 },
-        ]);
+    // Session tracking for multi-turn conversations
+    const sessionIdRef = useRef<string>("");
+    const eventSourceRef = useRef<EventSource | null>(null);
 
-        // Sample whale sightings
-        setSightings([
-            { lat: 37.7, lng: -122.6, species: "Humpback Whale", count: 12 },
-            { lat: 36.9, lng: -122.1, species: "Blue Whale", count: 5 },
-            { lat: 34.1, lng: -119.8, species: "Gray Whale", count: 8 },
-            { lat: 34.5, lng: -120.7, species: "Humpback Whale", count: 15 },
-            { lat: 38.0, lng: -123.0, species: "Blue Whale", count: 3 },
-            { lat: 33.9, lng: -118.5, species: "Fin Whale", count: 6 },
-        ]);
+    /**
+     * Build a natural-language query from the route form + filters.
+     */
+    const buildQuery = useCallback(
+        (query: RouteQuery): string => {
+            let nl = `Plan a safe shipping route from ${query.originPort} to ${query.destinationPort}`;
+            if (query.departureDate) {
+                nl += ` departing ${query.departureDate}`;
+            }
+            nl += `, optimized to minimize whale strike risk.`;
 
-        // Sample shipping lane
-        setShippingLanes([
-            {
-                path: [
-                    [-122.4, 37.8],
-                    [-122.0, 36.5],
-                    [-120.8, 35.0],
-                    [-119.5, 34.0],
-                    [-118.3, 33.7],
-                ],
-            },
-        ]);
+            if (selectedSeason !== "All Seasons") {
+                nl += ` Consider ${selectedSeason.toLowerCase()} seasonal conditions.`;
+            }
+            if (selectedSpecies !== "All Species") {
+                nl += ` Focus on ${selectedSpecies} protection.`;
+            }
 
-        // Sample migration corridor
-        setMigrationCorridors([
-            {
-                path: [
-                    [-124.0, 40.0],
-                    [-123.5, 38.5],
-                    [-123.0, 37.0],
-                    [-122.0, 35.5],
-                    [-120.5, 34.0],
-                    [-119.0, 33.0],
-                ],
-            },
-        ]);
+            nl += ` Include risk heatmap data, whale sighting locations, shipping lane traffic, migration corridors, speed reduction recommendations, and fuel/delay impact estimates.`;
+            nl += ` Return all map visualization data as GeoJSON FeatureCollections with render_type metadata.`;
+
+            return nl;
+        },
+        [selectedSeason, selectedSpecies]
+    );
+
+    /**
+     * Process accumulated response text from SSE events.
+     */
+    const processResponse = useCallback((fullText: string) => {
+        const parsed = parseAgentResponse(fullText);
+
+        if (parsed.riskData.length > 0) setRiskData(parsed.riskData);
+        if (parsed.sightings.length > 0) setSightings(parsed.sightings);
+        if (parsed.routes.length > 0) setRoutes(parsed.routes);
+        if (parsed.shippingLanes.length > 0) setShippingLanes(parsed.shippingLanes);
+        if (parsed.migrationCorridors.length > 0) setMigrationCorridors(parsed.migrationCorridors);
+        if (parsed.riskSummary) setRiskSummary(parsed.riskSummary);
+        if (parsed.alerts.length > 0) setAlerts(parsed.alerts);
     }, []);
 
+    /**
+     * Send a route query to the SAM gateway and subscribe to SSE for the response.
+     */
     const handleRouteQuery = useCallback(
         async (query: RouteQuery) => {
+            // Clean up any existing SSE connection
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+                eventSourceRef.current = null;
+            }
+
             setIsQuerying(true);
+            setError(null);
+            setStatusText("Sending query to Whale Route Coordinator...");
 
-            // Load demo data to visualize while we wait
-            loadDemoData();
+            const messageText = buildQuery(query);
+            const messageId = `msg-${uuid()}`;
+            const requestId = `req-${uuid()}`;
 
-            // Simulate a route planning response
-            // In production, this would call the SAM gateway via SSE
-            setTimeout(() => {
-                setRoutes([
-                    {
-                        path: [
-                            [-122.4, 37.8],
-                            [-123.0, 37.0],
-                            [-122.5, 36.0],
-                            [-121.5, 35.0],
-                            [-120.0, 34.2],
-                            [-118.5, 33.8],
-                        ],
+            // Build JSON-RPC request matching the chat page pattern
+            const sendMessageRequest = {
+                jsonrpc: "2.0",
+                id: requestId,
+                method: "message/stream",
+                params: {
+                    message: {
+                        role: "user",
+                        parts: [{ type: "text", text: messageText }],
+                        messageId,
+                        kind: "message",
+                        contextId: sessionIdRef.current || "",
+                        metadata: {
+                            agent_name: "WhaleRouteCoordinator",
+                        },
                     },
-                ]);
+                },
+            };
 
-                setRiskSummary({
-                    collisionProbability: 12.4,
-                    fuelImpact: 3.2,
-                    delayHours: 1.5,
+            try {
+                // POST to gateway - returns taskId for SSE subscription
+                const result = await api.webui.post<{
+                    jsonrpc: string;
+                    id: string;
+                    result: {
+                        id: string;
+                        contextId: string;
+                        kind: string;
+                        status?: { state: string; message?: unknown };
+                    };
+                }>("/api/v1/message:stream", sendMessageRequest);
+
+                const taskId = result?.result?.id;
+                const newSessionId = result?.result?.contextId;
+
+                if (!taskId) {
+                    throw new Error("Gateway did not return a task ID");
+                }
+
+                // Store session ID for future queries
+                if (newSessionId) {
+                    sessionIdRef.current = newSessionId;
+                }
+
+                setStatusText("Orchestrator is coordinating specialists...");
+
+                // Subscribe to SSE events for this task
+                const sseUrl = api.webui.getFullUrl(`/api/v1/sse/subscribe/${taskId}`);
+                const eventSource = new EventSource(sseUrl, { withCredentials: true });
+                eventSourceRef.current = eventSource;
+
+                let accumulatedText = "";
+
+                const handleSseEvent = (event: MessageEvent) => {
+                    try {
+                        const rpcResponse = JSON.parse(event.data);
+                        const eventResult = rpcResponse?.result;
+                        if (!eventResult) return;
+
+                        // Extract text from message parts
+                        const message = eventResult.status?.message;
+                        if (message?.parts) {
+                            for (const part of message.parts) {
+                                if (part.type === "text" && part.text) {
+                                    accumulatedText = part.text;
+                                } else if (part.type === "data") {
+                                    // Agent progress updates
+                                    const data = part.data ?? part;
+                                    if (data.status_text) {
+                                        setStatusText(data.status_text);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check if this is the final event
+                        if (eventResult.kind === "task" || eventResult.final === true) {
+                            // Process complete response
+                            processResponse(accumulatedText);
+                            setIsQuerying(false);
+                            setStatusText("");
+                            eventSource.close();
+                            eventSourceRef.current = null;
+                        } else if (eventResult.kind === "status-update") {
+                            // Intermediate update — try parsing partial results
+                            processResponse(accumulatedText);
+                            const state = eventResult.status?.state;
+                            if (state === "running") {
+                                setStatusText("Specialists analyzing data...");
+                            }
+                        }
+                    } catch (err) {
+                        console.warn("Failed to parse SSE event:", err);
+                    }
+                };
+
+                eventSource.addEventListener("status_update", handleSseEvent);
+                eventSource.addEventListener("artifact_update", handleSseEvent);
+                eventSource.addEventListener("final_response", handleSseEvent);
+
+                eventSource.addEventListener("error", () => {
+                    // EventSource auto-reconnects on error, but if it closes we finalize
+                    if (eventSource.readyState === EventSource.CLOSED) {
+                        if (accumulatedText) {
+                            processResponse(accumulatedText);
+                        }
+                        setIsQuerying(false);
+                        setStatusText("");
+                        eventSourceRef.current = null;
+                    }
                 });
-
-                setAlerts([
-                    {
-                        zone: "Monterey Bay NMS",
-                        maxSpeed: 10,
-                        reason: "Blue whale feeding area",
-                    },
-                    {
-                        zone: "Santa Barbara Channel",
-                        maxSpeed: 10,
-                        reason: "Seasonal speed restriction",
-                    },
-                ]);
-
+            } catch (err) {
+                const message = err instanceof Error ? err.message : "Failed to connect to gateway";
+                setError(message);
                 setIsQuerying(false);
-            }, 1500);
+                setStatusText("");
+            }
         },
-        [loadDemoData]
+        [buildQuery, processResponse]
     );
 
     return (
@@ -144,7 +240,21 @@ export function DashboardPage() {
                 selectedSpecies={selectedSpecies}
                 onSpeciesChange={setSelectedSpecies}
             />
-            <div className="flex-1">
+            <div className="relative flex-1">
+                {/* Status overlay */}
+                {(statusText || error) && (
+                    <div className="absolute left-4 top-4 z-10 max-w-sm rounded-lg bg-background/90 px-4 py-2 shadow-lg backdrop-blur-sm"
+                         style={{ borderColor: "var(--border)", border: "1px solid" }}>
+                        {error ? (
+                            <p className="text-sm" style={{ color: "var(--destructive)" }}>{error}</p>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <div className="h-2 w-2 animate-pulse rounded-full" style={{ backgroundColor: "var(--primary)" }} />
+                                <p className="text-sm text-muted-foreground">{statusText}</p>
+                            </div>
+                        )}
+                    </div>
+                )}
                 <MapView
                     riskData={riskData}
                     sightings={sightings}

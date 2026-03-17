@@ -17,6 +17,7 @@ from pathlib import Path
 from fastmcp import FastMCP
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from whale_common.geo_utils import haversine_km
 
 log = logging.getLogger(__name__)
 
@@ -47,21 +48,6 @@ def _load_vessels() -> list[dict]:
     return _vessels
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate the great-circle distance between two points in km."""
-    R = 6371.0  # Earth radius in km
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
-    )
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
-
-
 @mcp.tool()
 async def get_vessel_traffic(
     latitude: float, longitude: float, radius_km: float = 50
@@ -90,7 +76,7 @@ async def get_vessel_traffic(
         vlon = v.get("longitude")
         if vlat is None or vlon is None:
             continue
-        dist = _haversine_km(latitude, longitude, vlat, vlon)
+        dist = haversine_km(latitude, longitude, vlat, vlon)
         if dist <= radius_km:
             record = dict(v)
             record["distance_km"] = round(dist, 2)

@@ -9,6 +9,7 @@ the protocol_step_validator callback can restrict DELEGATE-step peer tools to
 only those agents the decomposer chose.
 """
 
+import json
 import logging
 import re
 from typing import Optional
@@ -231,7 +232,6 @@ class QueryDecomposerTool(DynamicTool):
         )
 
         raw = response.choices[0].message.content
-        import json
         try:
             parsed = json.loads(raw)
         except (json.JSONDecodeError, TypeError):

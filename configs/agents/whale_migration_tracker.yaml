@@ -79,6 +79,13 @@ apps:
             cold_db_path: data/whale_cold.db
 
         - tool_type: mcp
+          name: whale_alert_tools
+          connection_params:
+            type: sse
+            url: "http://localhost:9002/sse"
+            timeout: 30
+
+        - tool_type: mcp
           name: gbif_tools
           connection_params:
             type: sse

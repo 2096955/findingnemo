@@ -1,4 +1,5 @@
 import { PathLayer } from "@deck.gl/layers";
+import { PathStyleExtension } from "@deck.gl/extensions";
 import type { Route } from "./MapView";
 
 export interface MigrationCorridorLayerOptions {
@@ -23,6 +24,7 @@ export function createMigrationCorridorLayer({
         getWidth: 5000,
         widthMinPixels: 3,
         getDashArray: [8, 4],
+        extensions: [new PathStyleExtension({ dash: true })],
         capRounded: true,
         jointRounded: true,
     });

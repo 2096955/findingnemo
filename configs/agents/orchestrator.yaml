@@ -69,12 +69,20 @@ apps:
         - Simple factual → "quick_answer"
         Then call map_renderer to generate visualization layers for the dashboard.
 
+        IMPORTANT: In your final response, include ALL map_renderer GeoJSON outputs
+        as fenced JSON code blocks (```json ... ```) so the dashboard can parse them.
+        Include separate FeatureCollections for each layer: risk_heatmap, route,
+        sightings, shipping_lanes, migration_corridors.
+        Also include a summary JSON block with collision_risk_score (0-1),
+        fuel_impact_pct, time_delta_hours, and any speed reduction recommendations.
+
         **STEP 5 — VERIFY + REVISE**
         Delegate draft to peer_Verifier. If CRITICAL_ISSUES → delegate to
         peer_Reviser, then re-verify once. MINOR_ISSUES → proceed as-is.
 
         **STEP 6 — PERSIST**
-        Call memory_plane with operation="flush_cold", query=<original question>.
+        Call memory_plane with operation="flush_cold", query=<original question>,
+        and specialists_used=<comma-separated list of specialists that responded>.
 
         GENERAL GUIDELINES:
         - Include risk scores, distance estimates, and species data when available

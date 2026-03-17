@@ -76,9 +76,6 @@ async def search_whale_occurrences(
                 "error": "Longitude must be between -180 and 180",
                 "occurrences": [],
             }
-        # GBIF uses decimalLatitude/decimalLongitude with a distance filter
-        params["decimalLatitude"] = str(latitude)
-        params["decimalLongitude"] = str(longitude)
         params["geoDistance"] = f"{latitude},{longitude},{radius_km}km"
 
     if year is not None:
