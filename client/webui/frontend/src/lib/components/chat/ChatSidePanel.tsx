@@ -1,0 +1,375 @@
+import React, { useState, useEffect, useMemo } from "react";
+
+import { PanelRightIcon, FileText, Network, RefreshCw, Link2, Database, Brain, Gauge, Stethoscope } from "lucide-react";
+
+import { Button, Tabs, TabsList, TabsTrigger, TabsContent } from "@/lib/components/ui";
+import { useTaskContext, useChatContext } from "@/lib/hooks";
+import { FlowChartPanel, processTaskForVisualization } from "@/lib/components/activities";
+import type { VisualizedTask } from "@/lib/types";
+import { hasSourcesWithUrls } from "@/lib/utils";
+
+import { ArtifactPanel } from "./artifact/ArtifactPanel";
+import { FlowChartDetails } from "../activities/FlowChartDetails";
+import { RAGInfoPanel } from "./rag/RAGInfoPanel";
+import { DataSourcesPanel } from "./DataSourcesPanel";
+import { SessionMemoryPanel } from "./SessionMemoryPanel";
+import { PerformancePanel } from "./PerformancePanel";
+import { TriagePanel } from "./triage/TriagePanel";
+
+interface ChatSidePanelProps {
+    onCollapsedToggle: (isSidePanelCollapsed: boolean) => void;
+    isSidePanelCollapsed: boolean;
+    setIsSidePanelCollapsed: (isSidePanelCollapsed: boolean) => void;
+    isSidePanelTransitioning: boolean;
+}
+
+export const ChatSidePanel: React.FC<ChatSidePanelProps> = ({ onCollapsedToggle, isSidePanelCollapsed, setIsSidePanelCollapsed, isSidePanelTransitioning }) => {
+    const { activeSidePanelTab, setActiveSidePanelTab, setPreviewArtifact, taskIdInSidePanel, ragData, ragEnabled, highlightedSourceId, setHighlightedSourceId, sessionId, triageProgress, pipelineErrors } = useChatContext();
+    const { isReconnecting, isTaskMonitorConnecting, isTaskMonitorConnected, monitoredTasks, connectTaskMonitorStream, loadTaskFromBackend } = useTaskContext();
+    const [visualizedTask, setVisualizedTask] = useState<VisualizedTask | null>(null);
+    const [isLoadingTask, setIsLoadingTask] = useState<boolean>(false);
+
+    // Track which task IDs we've already attempted to load to prevent duplicate loads
+    const loadAttemptedRef = React.useRef<Set<string>>(new Set());
+
+    // Check if there are any sources in the current session (web sources or deep research sources)
+    const hasSourcesInSession = useMemo(() => hasSourcesWithUrls(ragData), [ragData]);
+
+    // Process task data for visualization when the selected activity task ID changes
+    // or when monitoredTasks is updated with new data
+    useEffect(() => {
+        if (!taskIdInSidePanel) {
+            setVisualizedTask(null);
+            return;
+        }
+
+        // Check if task is already in monitoredTasks with events
+        const existingTask = monitoredTasks[taskIdInSidePanel];
+
+        // Always try to load from backend first if we haven't already
+        // This ensures we get historical events that may not be in the SSE stream
+        // (e.g., after browser refresh for a running background task)
+        if (!loadAttemptedRef.current.has(taskIdInSidePanel)) {
+            loadAttemptedRef.current.add(taskIdInSidePanel);
+            setIsLoadingTask(true);
+
+            loadTaskFromBackend(taskIdInSidePanel)
+                .then(loadedTask => {
+                    if (!loadedTask) {
+                        // Backend load failed, but we might still have SSE events
+                        // Check if we have any events from SSE stream
+                        if (existingTask && existingTask.events && existingTask.events.length > 0) {
+                            const vizTask = processTaskForVisualization(existingTask.events, monitoredTasks, existingTask);
+                            setVisualizedTask(vizTask);
+                        } else {
+                            setVisualizedTask(null);
+                        }
+                    }
+                    // loadTaskFromBackend updates monitoredTasks, which will trigger this effect again
+                    // to process the visualization with the updated data
+                })
+                .catch(() => {
+                    // On error, try to use existing SSE events if available
+                    if (existingTask && existingTask.events && existingTask.events.length > 0) {
+                        const vizTask = processTaskForVisualization(existingTask.events, monitoredTasks, existingTask);
+                        setVisualizedTask(vizTask);
+                    } else {
+                        setVisualizedTask(null);
+                    }
+                })
+                .finally(() => {
+                    setIsLoadingTask(false);
+                });
+        } else if (existingTask && existingTask.events && existingTask.events.length > 0) {
+            // Already loaded from backend, now process with latest events from monitoredTasks
+            const vizTask = processTaskForVisualization(existingTask.events, monitoredTasks, existingTask);
+            setVisualizedTask(vizTask);
+            setIsLoadingTask(false);
+        } else {
+            // Already attempted to load but no data - show empty state
+            setVisualizedTask(null);
+        }
+    }, [taskIdInSidePanel, monitoredTasks, loadTaskFromBackend]);
+
+    // Reset load attempts when task ID changes
+    useEffect(() => {
+        if (taskIdInSidePanel) {
+            // Clear the load attempt for the previous task when switching to a new one
+            // This allows re-loading if the user navigates away and back
+            return () => {
+                // Don't clear immediately - only clear after a delay to allow for state updates
+                setTimeout(() => {
+                    loadAttemptedRef.current.delete(taskIdInSidePanel);
+                }, 1000);
+            };
+        }
+    }, [taskIdInSidePanel]);
+
+    // Helper function to determine what to display in the activity panel
+    const getActivityPanelContent = () => {
+        if (isLoadingTask) {
+            return {
+                message: "Loading activity data...",
+                showButton: false,
+            };
+        }
+        if (isReconnecting || isTaskMonitorConnecting) {
+            return {
+                message: "Connecting to task monitor ...",
+                showButton: false,
+            };
+        }
+        if (!isTaskMonitorConnected) {
+            return {
+                message: "No connection to task monitor",
+                showButton: true,
+                buttonText: "Reconnect",
+                buttonIcon: RefreshCw,
+                buttonAction: connectTaskMonitorStream,
+            };
+        }
+
+        // isTaskMonitorConnected is true
+        if (!taskIdInSidePanel) {
+            return {
+                message: "No task selected to display",
+                showButton: false,
+            };
+        }
+
+        if (!visualizedTask) {
+            return {
+                message: "No activity data available for the selected task",
+                showButton: false,
+            };
+        }
+
+        return null;
+    };
+
+    const toggleCollapsed = () => {
+        const newCollapsed = !isSidePanelCollapsed;
+        setIsSidePanelCollapsed(newCollapsed);
+        onCollapsedToggle(newCollapsed);
+    };
+
+    const handleTabClick = (tab: "files" | "activity" | "rag" | "datasources" | "memory" | "performance" | "triage") => {
+        if (tab === "files") {
+            setPreviewArtifact(null);
+        }
+
+        setActiveSidePanelTab(tab);
+    };
+
+    const handleIconClick = (tab: "files" | "activity" | "rag" | "datasources" | "memory" | "performance" | "triage") => {
+        if (isSidePanelCollapsed) {
+            setIsSidePanelCollapsed(false);
+            onCollapsedToggle?.(false);
+        }
+
+        handleTabClick(tab);
+    };
+
+    // Collapsed state - narrow vertical panel with icons
+    if (isSidePanelCollapsed) {
+        return (
+            <div className="bg-background flex h-full w-full flex-col items-center border-l py-4">
+                <Button data-testid="expandPanel" variant="ghost" size="sm" onClick={toggleCollapsed} className="h-10 w-10 p-0" tooltip="Expand Panel">
+                    <PanelRightIcon className="size-5" />
+                </Button>
+
+                <div className="bg-border my-4 h-px w-8"></div>
+
+                <Button variant="ghost" size="sm" onClick={() => handleIconClick("files")} className="mb-2 h-10 w-10 p-0" tooltip="Files">
+                    <FileText className="size-5" />
+                </Button>
+
+                <Button variant="ghost" size="sm" onClick={() => handleIconClick("activity")} className="mb-2 h-10 w-10 p-0" tooltip="Activity">
+                    <Network className="size-5" />
+                </Button>
+
+                {hasSourcesInSession && (
+                    <Button variant="ghost" size="sm" onClick={() => handleIconClick("rag")} className="mb-2 h-10 w-10 p-0" tooltip="Sources">
+                        <Link2 className="size-5" />
+                    </Button>
+                )}
+
+                <Button variant="ghost" size="sm" onClick={() => handleIconClick("datasources")} className="mb-2 h-10 w-10 p-0" tooltip="Data Sources">
+                    <Database className="size-5" />
+                </Button>
+
+                <Button variant="ghost" size="sm" onClick={() => handleIconClick("memory")} className="mb-2 h-10 w-10 p-0" tooltip="Session Memory">
+                    <Brain className="size-5" />
+                </Button>
+
+                <Button variant="ghost" size="sm" onClick={() => handleIconClick("performance")} className="h-10 w-10 p-0" tooltip="Agent Performance">
+                    <Gauge className="size-5" />
+                </Button>
+
+                {triageProgress && (
+                    <Button variant="ghost" size="sm" onClick={() => handleIconClick("triage")} className="mt-2 h-10 w-10 p-0" tooltip="Triage">
+                        <Stethoscope className="size-5" />
+                    </Button>
+                )}
+            </div>
+        );
+    }
+
+    // Expanded state - full panel with tabs
+    return (
+        <div className="bg-background flex h-full flex-col border-l">
+            <div className="m-1 min-h-0 flex-1">
+                <Tabs value={activeSidePanelTab} onValueChange={value => handleTabClick(value as "files" | "activity" | "rag" | "datasources" | "memory" | "performance" | "triage")} className="flex h-full flex-col">
+                    <div className="@container flex gap-2 p-2">
+                        <Button data-testid="collapsePanel" variant="ghost" onClick={toggleCollapsed} className="shrink-0 p-1" tooltip="Collapse Panel">
+                            <PanelRightIcon className="size-5" />
+                        </Button>
+                        <TabsList className="flex min-w-0 flex-1 bg-transparent p-0">
+                            <TabsTrigger
+                                value="files"
+                                title="Files"
+                                className="border-border bg-muted data-[state=active]:bg-background relative min-w-0 flex-1 cursor-pointer rounded-none rounded-l-md border border-r-0 px-2 data-[state=active]:z-10 data-[state=active]:border-r-0"
+                                onClick={() => setPreviewArtifact(null)}
+                            >
+                                <FileText className="h-4 w-4 shrink-0" />
+                                <span className="ml-1.5 hidden truncate @[240px]:inline">Files</span>
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="activity"
+                                title="Activity"
+                                className="border-border bg-muted data-[state=active]:bg-background relative min-w-0 flex-1 cursor-pointer rounded-none border-x-0 border-y px-2 data-[state=active]:z-10"
+                            >
+                                <Network className="h-4 w-4 shrink-0" />
+                                <span className="ml-1.5 hidden truncate @[240px]:inline">Activity</span>
+                            </TabsTrigger>
+                            {hasSourcesInSession && (
+                                <TabsTrigger
+                                    value="rag"
+                                    title="Sources"
+                                    className="border-border bg-muted data-[state=active]:bg-background relative min-w-0 flex-1 cursor-pointer rounded-none border-x-0 border-y px-2 data-[state=active]:z-10"
+                                >
+                                    <Link2 className="h-4 w-4 shrink-0" />
+                                    <span className="ml-1.5 hidden truncate @[240px]:inline">Sources</span>
+                                </TabsTrigger>
+                            )}
+                            <TabsTrigger
+                                value="datasources"
+                                title="Data Sources"
+                                className="border-border bg-muted data-[state=active]:bg-background relative min-w-0 flex-1 cursor-pointer rounded-none border-x-0 border-y px-2 data-[state=active]:z-10"
+                            >
+                                <Database className="h-4 w-4 shrink-0" />
+                                <span className="ml-1.5 hidden truncate @[240px]:inline">Data</span>
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="memory"
+                                title="Session Memory"
+                                className="border-border bg-muted data-[state=active]:bg-background relative min-w-0 flex-1 cursor-pointer rounded-none border-x-0 border-y px-2 data-[state=active]:z-10"
+                            >
+                                <Brain className="h-4 w-4 shrink-0" />
+                                <span className="ml-1.5 hidden truncate @[240px]:inline">Memory</span>
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="performance"
+                                title="Agent Performance"
+                                className={`border-border bg-muted data-[state=active]:bg-background relative min-w-0 flex-1 cursor-pointer rounded-none border-x-0 border-y px-2 data-[state=active]:z-10 ${!triageProgress ? "rounded-r-md border border-l-0" : ""}`}
+                            >
+                                <Gauge className="h-4 w-4 shrink-0" />
+                                <span className="ml-1.5 hidden truncate @[240px]:inline">Perf</span>
+                            </TabsTrigger>
+                            {triageProgress && (
+                                <TabsTrigger
+                                    value="triage"
+                                    title="Medical Triage"
+                                    className="border-border bg-muted data-[state=active]:bg-background relative min-w-0 flex-1 cursor-pointer rounded-none rounded-r-md border border-l-0 px-2 data-[state=active]:z-10"
+                                >
+                                    <Stethoscope className="h-4 w-4 shrink-0" />
+                                    <span className="ml-1.5 hidden truncate @[240px]:inline">Triage</span>
+                                </TabsTrigger>
+                            )}
+                        </TabsList>
+                    </div>
+                    <div className="min-h-0 flex-1">
+                        <TabsContent value="files" className="m-0 h-full">
+                            <div className="h-full">
+                                <ArtifactPanel />
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="activity" className="m-0 h-full">
+                            <div className="h-full">
+                                {(() => {
+                                    const emptyStateContent = getActivityPanelContent();
+
+                                    if (!emptyStateContent && visualizedTask) {
+                                        return (
+                                            <div className="flex h-full flex-col">
+                                                <FlowChartDetails task={visualizedTask} />
+                                                <FlowChartPanel processedSteps={visualizedTask.steps || []} isRightPanelVisible={false} isSidePanelTransitioning={isSidePanelTransitioning} />
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="flex h-full items-center justify-center p-4">
+                                            <div className="text-muted-foreground text-center">
+                                                <Network className="mx-auto mb-4 h-12 w-12" />
+                                                <div className="text-lg font-medium">Activity</div>
+                                                <div className="mt-2 text-sm">{emptyStateContent?.message}</div>
+                                                {emptyStateContent?.showButton && (
+                                                    <div className="mt-4">
+                                                        <Button onClick={emptyStateContent.buttonAction}>
+                                                            {emptyStateContent.buttonIcon &&
+                                                                (() => {
+                                                                    const ButtonIcon = emptyStateContent.buttonIcon;
+                                                                    return <ButtonIcon className="h-4 w-4" />;
+                                                                })()}
+                                                            {emptyStateContent.buttonText}
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </TabsContent>
+
+                        {hasSourcesInSession && (
+                            <TabsContent value="rag" className="m-0 h-full">
+                                <div className="h-full">
+                                    <RAGInfoPanel ragData={taskIdInSidePanel ? ragData.filter(r => r.taskId === taskIdInSidePanel) : ragData} enabled={ragEnabled} highlightedSourceId={highlightedSourceId} onHighlightConsumed={() => setHighlightedSourceId(null)} pipelineErrors={pipelineErrors} />
+                                </div>
+                            </TabsContent>
+                        )}
+
+                        <TabsContent value="datasources" className="m-0 h-full">
+                            <div className="h-full">
+                                <DataSourcesPanel isActive={activeSidePanelTab === "datasources"} />
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="memory" className="m-0 h-full">
+                            <div className="h-full">
+                                <SessionMemoryPanel sessionId={sessionId} />
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="performance" className="m-0 h-full">
+                            <div className="h-full">
+                                <PerformancePanel isActive={activeSidePanelTab === "performance"} />
+                            </div>
+                        </TabsContent>
+
+                        {triageProgress && (
+                            <TabsContent value="triage" className="m-0 h-full">
+                                <div className="h-full">
+                                    <TriagePanel isActive={activeSidePanelTab === "triage"} />
+                                </div>
+                            </TabsContent>
+                        )}
+                    </div>
+                </Tabs>
+            </div>
+        </div>
+    );
+};
