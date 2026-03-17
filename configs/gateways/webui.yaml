@@ -35,18 +35,45 @@ apps:
       sse_max_queue_size: 200
 
       system_purpose: >
-        Whale Agent is an AI-powered maritime safety system that helps reduce
-        whale-vessel collisions. It provides risk-assessed shipping routes,
-        real-time whale sighting data, and dynamic risk maps.
+        Whale Agent is an AI-powered maritime safety system that reduces
+        whale-vessel collisions globally. It provides dynamic risk maps,
+        optimized shipping routes, and real-time alerts for speed reduction,
+        course adjustment, and increased situational awareness. Built for
+        environmental organizations, shipping companies, ship captains,
+        and insurance companies. Aligned with UN SDG 14 (Life Below Water)
+        and SDG 09 (Industry, Innovation, Infrastructure).
 
       response_format: >
-        Responses should be formatted in Markdown. Include risk scores,
-        distance estimates, and species data when available.
+        Responses should be formatted in Markdown. Use headers, bullet points,
+        and bold text. Include risk scores, distance estimates, and species
+        data when available. When providing route recommendations, include
+        a summary of risk factors and fuel impact. Always include GeoJSON
+        FeatureCollections as fenced JSON code blocks for map visualization.
 
-      frontend_welcome_message: "Welcome to Whale Agent! Ask me to plan a safe shipping route, check whale activity, or assess collision risk."
+      frontend_welcome_message: >
+        Welcome to Whale Agent — an open-source maritime safety system that
+        reduces whale-vessel collisions through dynamic risk mapping, optimized
+        shipping routes, and real-time alerts.
+
+
+        Try asking:
+
+        - "Plan a safe route from San Francisco to Los Angeles avoiding whale zones"
+
+        - "What is the collision risk in the Santa Barbara Channel this month?"
+
+        - "Show me humpback whale migration patterns for spring"
+
+        - "What historical whale strikes have occurred near Monterey Bay?"
+
+        - "What whale species are most at risk in the North Pacific?"
+
       frontend_bot_name: "Whale Agent"
       frontend_collect_feedback: true
       frontend_use_authorization: false
+
+      frontend_feature_enablement:
+        projects: true
 
       background_tasks:
         default_timeout_ms: 3600000

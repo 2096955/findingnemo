@@ -1,4 +1,4 @@
-import { HeatmapLayer } from "@deck.gl/layers";
+import { HeatmapLayer } from "@deck.gl/aggregation-layers";
 import type { RiskPoint } from "./MapView";
 
 export interface RiskHeatmapLayerOptions {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import Map from "react-map-gl/maplibre";
 import DeckGL from "@deck.gl/react";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -92,7 +92,8 @@ export function MapView({
     }, []);
 
     const layers = useMemo(() => {
-        const result: unknown[] = [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result: any[] = [];
 
         if (layerVisibility.riskHeatmap && riskData.length > 0) {
             result.push(createRiskHeatmapLayer({ data: riskData }));
@@ -124,7 +125,8 @@ export function MapView({
                 onViewStateChange={handleViewStateChange}
                 layers={layers}
                 controller={true}
-                getTooltip={getTooltip as (info: unknown) => unknown}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                getTooltip={getTooltip as any}
             >
                 <Map mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" />
             </DeckGL>

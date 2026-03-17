@@ -1,5 +1,5 @@
 // client/webui/frontend/src/components/Dashboard/DashboardPage.tsx
-import React, { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { MapView, type LayerVisibility, type RiskPoint, type Sighting, type Route } from "./MapView";
 import { Sidebar, type RouteQuery, type RiskSummary, type SpeedAlert } from "./Sidebar";
 import { api } from "@/lib/api/client";

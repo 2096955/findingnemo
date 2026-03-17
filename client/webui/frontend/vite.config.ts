@@ -58,6 +58,7 @@ export default defineConfig(({ mode }) => {
                 registerType: "prompt",
                 manifest: false, // already have public/manifest.json
                 workbox: {
+                    maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
                     globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
                     navigateFallback: null, // medical app: no stale cached content
                     runtimeCaching: [
