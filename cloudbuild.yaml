@@ -1,24 +1,26 @@
 steps:
   # Build Whale Agent frontend from source
+  # Installs @deck.gl/extensions alongside existing deps
   - name: "node:22"
     entrypoint: "bash"
     args:
       - "-c"
-      - "cd client/webui/frontend && npm ci --ignore-engines && npm run build"
+      - "cd client/webui/frontend && npm install --ignore-engines && npm run build"
 
   # Copy built static/ to Docker build context
+  # Falls back to empty dir if frontend build is skipped
   - name: "gcr.io/cloud-builders/docker"
     entrypoint: "bash"
     args:
       - "-c"
-      - "rm -rf frontend-static && cp -r client/webui/frontend/static frontend-static"
+      - "rm -rf frontend-static && if [ -d client/webui/frontend/static ]; then cp -r client/webui/frontend/static frontend-static; else mkdir -p frontend-static; fi"
 
   # Docker build
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "build"
       - "-t"
-      - "gcr.io/$PROJECT_ID/whale-agent:$COMMIT_SHA"
+      - "gcr.io/$PROJECT_ID/whale-agent:${_TAG}"
       - "-t"
       - "gcr.io/$PROJECT_ID/whale-agent:latest"
       - "-f"
@@ -27,14 +29,17 @@ steps:
 
   # Push
   - name: "gcr.io/cloud-builders/docker"
-    args: ["push", "gcr.io/$PROJECT_ID/whale-agent:$COMMIT_SHA"]
+    args: ["push", "gcr.io/$PROJECT_ID/whale-agent:${_TAG}"]
 
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/whale-agent:latest"]
 
 images:
-  - "gcr.io/$PROJECT_ID/whale-agent:$COMMIT_SHA"
+  - "gcr.io/$PROJECT_ID/whale-agent:${_TAG}"
   - "gcr.io/$PROJECT_ID/whale-agent:latest"
+
+substitutions:
+  _TAG: "v1"
 
 timeout: "1200s"
 
