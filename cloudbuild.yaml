@@ -1,19 +1,10 @@
 steps:
-  # Build Whale Agent frontend from source
-  # Installs @deck.gl/extensions alongside existing deps
-  - name: "node:22"
-    entrypoint: "bash"
-    args:
-      - "-c"
-      - "cd client/webui/frontend && npm install --ignore-engines && npm run build"
-
-  # Copy built static/ to Docker build context
-  # Falls back to empty dir if frontend build is skipped
+  # Copy pre-built frontend static/ to Docker build context
   - name: "gcr.io/cloud-builders/docker"
     entrypoint: "bash"
     args:
       - "-c"
-      - "rm -rf frontend-static && if [ -d client/webui/frontend/static ]; then cp -r client/webui/frontend/static frontend-static; else mkdir -p frontend-static; fi"
+      - "cp -r client/webui/frontend/static frontend-static"
 
   # Docker build
   - name: "gcr.io/cloud-builders/docker"
@@ -41,7 +32,7 @@ images:
 substitutions:
   _TAG: "v1"
 
-timeout: "1200s"
+timeout: "600s"
 
 options:
   machineType: "E2_HIGHCPU_8"
