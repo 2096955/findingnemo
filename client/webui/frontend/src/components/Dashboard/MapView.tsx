@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import Map from "react-map-gl/maplibre";
 import DeckGL from "@deck.gl/react";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -69,6 +69,48 @@ export function MapView({
     onSightingClick,
 }: MapViewProps) {
     const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
+    const hasFitted = useRef(false);
+
+    // Auto-fit map to data bounds when route/risk data first arrives
+    useEffect(() => {
+        if (hasFitted.current) return;
+
+        // Collect all coordinates from every data source
+        const lngs: number[] = [];
+        const lats: number[] = [];
+
+        for (const r of routes) {
+            for (const [lng, lat] of r.path) { lngs.push(lng); lats.push(lat); }
+        }
+        for (const r of shippingLanes) {
+            for (const [lng, lat] of r.path) { lngs.push(lng); lats.push(lat); }
+        }
+        for (const r of migrationCorridors) {
+            for (const [lng, lat] of r.path) { lngs.push(lng); lats.push(lat); }
+        }
+        for (const p of riskData) { lngs.push(p.lng); lats.push(p.lat); }
+        for (const s of sightings) { lngs.push(s.lng); lats.push(s.lat); }
+
+        if (lngs.length < 2) return;
+
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+
+        // Centre on the bounding box with padding
+        const centerLng = (minLng + maxLng) / 2;
+        const centerLat = (minLat + maxLat) / 2;
+        const spanLng = Math.max(maxLng - minLng, 1);
+        const spanLat = Math.max(maxLat - minLat, 1);
+        // Rough zoom: 360° = zoom 0, 180° = zoom 1, etc.
+        const zoom = Math.max(0, Math.min(12,
+            Math.floor(Math.log2(360 / Math.max(spanLng, spanLat))) - 0.5
+        ));
+
+        setViewState(prev => ({ ...prev, latitude: centerLat, longitude: centerLng, zoom }));
+        hasFitted.current = true;
+    }, [routes, shippingLanes, migrationCorridors, riskData, sightings]);
 
     const handleViewStateChange = useCallback(({ viewState: vs }: { viewState: unknown }) => {
         setViewState(vs as typeof INITIAL_VIEW_STATE);

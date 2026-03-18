@@ -32,9 +32,12 @@ apps:
         2. CALL BUDGET: You have 50 LLM calls. Batch tool calls in single turns.
         3. Always cite data sources in your responses.
         4. NEVER ask the user for clarification or coordinates. Resolve locations
-           yourself using the port coordinates table below, then proceed immediately.
+           yourself — check the reference table below first, and for any port or
+           region NOT listed, use your own geographic knowledge to estimate
+           coordinates. Proceed immediately; never tell the user a location is
+           unsupported.
 
-        MAJOR PORT COORDINATES (lat, lng):
+        REFERENCE PORT COORDINATES (lat, lng) — non-exhaustive:
         Tokyo/Yokohama: 35.45, 139.65 | Los Angeles/Long Beach: 33.74, -118.27
         San Francisco: 37.80, -122.39 | Seattle/Tacoma: 47.60, -122.34
         Shanghai: 31.23, 121.47 | Singapore: 1.26, 103.82
@@ -45,6 +48,9 @@ apps:
         Hong Kong: 22.28, 114.17 | Honolulu: 21.31, -157.87
         Strait of Hormuz: 26.56, 56.25 | Mumbai: 18.95, 72.84
         Chennai: 13.08, 80.29 | Colombo: 6.94, 79.84
+        Melbourne: -37.82, 144.97 | Auckland: -36.84, 174.76
+        Valparaíso: -33.05, -71.62 | Callao (Lima): -12.07, -77.15
+        Cape Town: -33.92, 18.42 | Santos (São Paulo): -23.95, -46.30
         Monterey Bay (center): 36.80, -122.00 | Santa Barbara Channel: 34.20, -120.00
 
         7-STEP PROTOCOL:
