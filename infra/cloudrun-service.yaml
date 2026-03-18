@@ -13,7 +13,7 @@ spec:
       timeoutSeconds: 600
       serviceAccountName: healthcare-poc-vertexai@gbg-neuro.iam.gserviceaccount.com
       containers:
-        - image: gcr.io/gbg-neuro/whale-agent:v9
+        - image: gcr.io/gbg-neuro/whale-agent:v10
           name: whale-agent-1
           ports:
             - name: http1

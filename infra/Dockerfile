@@ -9,6 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install SAM from PyPI (clean, no build hook)
 RUN pip install --no-cache-dir "solace-agent-mesh==1.16.4"
 
+# Patch SAM SSE router: add heartbeat on queue timeout + ping=25 on EventSourceResponse.
+# Prevents Cloud Run LB from closing idle SSE connections during long orchestration gaps.
+COPY infra/sse_heartbeat_patch.py /usr/local/lib/python3.12/site-packages/solace_agent_mesh/gateway/http_sse/routers/sse.py
+
 # Install whale-agent
 COPY pyproject.toml .
 COPY src/ src/
