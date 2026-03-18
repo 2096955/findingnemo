@@ -76,15 +76,35 @@ apps:
 
         • Feed any HIGH or CRITICAL alerts into STEP 2 delegation instructions
           and STEP 4 synthesis — they MUST appear in the final risk assessment.
-        • If overall_threat_level is HIGH or CRITICAL for a specific region
-          (e.g. armed conflict closing the Strait of Hormuz), you MUST modify the
-          route request sent to peer_RouteOptimizer:
-          - PREPEND the threat context to the RouteOptimizer query, e.g.:
-            "⚠️ EXCLUSION ZONE: Strait of Hormuz is closed due to armed conflict.
-            DO NOT route through the Persian Gulf. Route via Cape of Good Hope
-            or another safe alternative."
-          - This forces the RouteOptimizer to compute an alternative path that
-            avoids the threatened region entirely.
+        • If overall_threat_level is HIGH or CRITICAL for a specific region,
+          you MUST modify the route request sent to peer_RouteOptimizer.
+          PREPEND the threat context and exclusion instructions.
+
+        CRITICAL — CHOKEPOINT BOTTLENECK LOGIC:
+        Some straits are the ONLY exit from an enclosed sea. If closed, ports
+        behind them are TRAPPED — you cannot simply "reroute around" them.
+        You must instead suggest alternative DEPARTURE PORTS outside the closure.
+
+        BOTTLENECK MAP:
+        Strait of Hormuz closed → ports TRAPPED: Dubai, Abu Dhabi, Doha, Bahrain,
+          Kuwait, Dammam, Basra (entire Persian Gulf). Cannot exit.
+          → Alt departure ports: Fujairah (UAE, Gulf of Oman side), Muscat, Salalah
+        Suez Canal closed → NOT a bottleneck (Med & Red Sea have other exits).
+          → Reroute via Cape of Good Hope.
+        Malacca Strait closed → NOT a full bottleneck for most routes.
+          → Reroute via Lombok Strait or Sunda Strait.
+        Panama Canal closed → NOT a bottleneck.
+          → Reroute via Cape Horn or Suez.
+        Bab el-Mandeb closed → Red Sea ports (Jeddah, Aqaba) can still exit via Suez.
+          → Reroute Indian Ocean traffic via Cape of Good Hope.
+
+        When a bottleneck is closed and the user's origin or destination is
+        BEHIND it, you MUST:
+        1. WARN the user that this port is currently inaccessible
+        2. Suggest alternative departure/arrival ports outside the closure
+        3. Compute the route from the nearest accessible alternative port
+        4. Include the distance/cost of overland transport to the alt port
+
         • If overall_threat_level is CRITICAL, also prepend a ⚠️ CRITICAL ALERT
           banner to your final response.
         • If the tool fails or returns no alerts, proceed normally — this step

@@ -32,15 +32,21 @@ apps:
 
         **WORKFLOW:**
         1. Receive route parameters from the Orchestrator (origin, destination, vessel type)
-        2. Check for EXCLUSION ZONES in the Orchestrator's message. If the message
-           contains "⚠️ EXCLUSION ZONE" or similar conflict/closure warnings, you
-           MUST reroute around those regions entirely:
-           - Choose alternative waypoints that bypass the excluded area
-           - Pass those exclusion areas as risk_zones to route_calculator with a
-             large radius_km (e.g. 500-1000km) to force full avoidance
-           - For Strait of Hormuz closure → route via Cape of Good Hope
+        2. Check for EXCLUSION ZONES or BOTTLENECK WARNINGS in the Orchestrator's
+           message. If present, handle as follows:
+
+           BOTTLENECK (port trapped behind closed strait):
+           - The Orchestrator will specify an alternative departure/arrival port
+             outside the closure (e.g. Fujairah instead of Dubai when Hormuz is
+             closed). Use that alternative port as the origin/destination.
+           - DO NOT attempt to route through a closed bottleneck — it is
+             physically impossible, not just risky.
+
+           REROUTABLE CLOSURE (strait closed but ports are not trapped):
+           - Pass the closed area as risk_zones to route_calculator with a large
+             radius_km (500-1000km) to force full avoidance.
            - For Suez/Red Sea closure → route via Cape of Good Hope
-           - For Malacca Strait closure → route via Lombok/Sunda Strait
+           - For Malacca Strait closure → route via Lombok or Sunda Strait
            - For Panama Canal closure → route via Cape Horn or Suez
         3. Use route_calculator to compute candidate routes with waypoints
         4. Use fuel_estimator to compute fuel impact for each route variant
