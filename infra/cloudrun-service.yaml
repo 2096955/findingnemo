@@ -8,13 +8,12 @@ spec:
       annotations:
         run.googleapis.com/startup-cpu-boost: "true"
         autoscaling.knative.dev/maxScale: "10"
-        run.googleapis.com/sessionAffinity: "true"
     spec:
       containerConcurrency: 80
       timeoutSeconds: 600
       serviceAccountName: healthcare-poc-vertexai@gbg-neuro.iam.gserviceaccount.com
       containers:
-        - image: gcr.io/gbg-neuro/whale-agent:v6
+        - image: gcr.io/gbg-neuro/whale-agent:v7
           name: whale-agent-1
           ports:
             - name: http1
@@ -43,11 +42,11 @@ spec:
             - name: GOOGLE_MAPS_API_KEY
               value: "AIzaSyBOrXdwsFvLKSKRe8KUFJwnCslpkgvq6Vo"
           startupProbe:
-            failureThreshold: 1
-            periodSeconds: 240
+            failureThreshold: 3
+            periodSeconds: 120
             tcpSocket:
               port: 8080
-            timeoutSeconds: 240
+            timeoutSeconds: 120
   traffic:
     - percent: 100
       latestRevision: true

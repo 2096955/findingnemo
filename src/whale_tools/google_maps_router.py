@@ -151,7 +151,7 @@ async def compute_maps_route(
 
     try:
         from google import genai
-        from google.genai.types import GenerateContentConfig
+        from google.genai.types import GenerateContentConfig, Tool
     except ImportError as exc:
         return {"error": f"google-genai SDK not available: {exc}"}
 
@@ -174,7 +174,7 @@ async def compute_maps_route(
     # Try with Google Maps grounding first; fall back to plain Gemini if unavailable.
     response = None
     try:
-        from google.genai.types import GoogleMaps, Tool
+        from google.genai.types import GoogleMaps
         response = client.models.generate_content(
             model=resolved_model,
             contents=prompt,
