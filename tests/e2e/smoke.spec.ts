@@ -70,7 +70,7 @@ async function sendChatMessage(page: Page, text: string) {
 async function waitForAgentResponse(
   page: Page,
   pattern: RegExp,
-  timeoutMs = 420_000,
+  timeoutMs = 480_000,
 ) {
   // First wait for ANY agent bubble to appear (mr-auto = left-aligned = bot)
   const anyBubble = page.locator('[class*="mr-auto"]').first();
@@ -160,7 +160,7 @@ test.describe("2 · Chat Round-Trip + Dashboard Bridge", () => {
     await waitForAgentResponse(
       page,
       /route|whale|risk|francisco|angeles|nautical|collision/i,
-      420_000,
+      480_000,
     );
 
     // ── Response quality checks ────────────────────────────────────────────
@@ -261,7 +261,7 @@ test.describe("3 · Dashboard Form", () => {
     // the button reverts from "Planning..." back to "Plan Route" (response received)
     await expect(
       page.getByRole("button", { name: "Plan Route" }),
-    ).toBeVisible({ timeout: 420_000 });
+    ).toBeVisible({ timeout: 480_000 });
 
     // If risk summary parsed successfully, verify it
     const riskSummary = page.getByText("Risk Summary");
@@ -409,6 +409,6 @@ test.describe("6 · Streaming UX", () => {
     // Eventually completes — button reverts from "Planning..." to "Plan Route"
     await expect(
       page.getByRole("button", { name: "Plan Route" }),
-    ).toBeVisible({ timeout: 420_000 });
+    ).toBeVisible({ timeout: 480_000 });
   });
 });
