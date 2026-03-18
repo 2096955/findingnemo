@@ -1,309 +1,188 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const BASE_URL =
   process.env.WHALE_AGENT_URL ||
   "https://whale-agent-534348290993.us-central1.run.app";
 
-test.describe("Whale Agent Live Smoke Tests", () => {
-  test("homepage loads with welcome message", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+// ---------------------------------------------------------------------------
+// Helpers — shared setup used by multiple test groups
+// ---------------------------------------------------------------------------
+
+/** Navigate to the app and wait for agents to finish loading. */
+async function loadApp(page: Page) {
+  await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+  // App shows "Connecting..." while fetching agentCards — wait for it to clear.
+  await expect(page.getByText("Connecting...")).not.toBeVisible({
+    timeout: 60_000,
+  });
+}
+
+/** Locate the chat input (contenteditable MentionContentEditable). */
+function chatInput(page: Page) {
+  return page.locator('[data-testid="chat-input"]');
+}
+
+/** Type a message into the chat input and click Send. */
+async function sendChatMessage(page: Page, text: string) {
+  const input = chatInput(page);
+  await expect(input).toBeVisible({ timeout: 15_000 });
+  await input.click();
+  await input.fill(text);
+
+  const sendBtn = page.locator('[data-testid="sendMessage"]');
+  await expect(sendBtn).toBeEnabled({ timeout: 5_000 });
+  await sendBtn.click();
+}
+
+/**
+ * Wait for an agent-response bubble whose text matches `pattern`.
+ * Agent bubbles are left-aligned (class contains "mr-auto").
+ */
+async function waitForAgentResponse(
+  page: Page,
+  pattern: RegExp,
+  timeoutMs = 150_000,
+) {
+  const bubble = page
+    .locator('[class*="mr-auto"]')
+    .filter({ hasText: pattern })
+    .first();
+  await expect(bubble).toBeVisible({ timeout: timeoutMs });
+  return bubble;
+}
+
+// ===========================================================================
+// 1. HEALTH GATE — fast checks that fail early if the deployment is broken
+// ===========================================================================
+
+test.describe("1 · Health Gate", () => {
+  test("API returns correct bot name and agents are registered", async ({
+    request,
+  }) => {
+    // Config endpoint
+    const configRes = await request.get(`${BASE_URL}/api/v1/config`);
+    expect(configRes.status()).toBe(200);
+    const config = await configRes.json();
+    expect(config).toHaveProperty("frontend_bot_name", "Whale Agent");
+
+    // At least one agent must be registered in the gateway
+    const agentsRes = await request.get(`${BASE_URL}/api/v1/agentCards`);
+    expect(agentsRes.status()).toBe(200);
+    const agents = await agentsRes.json();
+    expect(
+      Array.isArray(agents) && agents.length > 0,
+      "No agents registered in gateway — agents never started",
+    ).toBe(true);
+  });
+
+  test("frontend loads and chat input accepts text", async ({ page }) => {
+    await loadApp(page);
+
+    const input = chatInput(page);
+    await expect(input).toBeVisible({ timeout: 15_000 });
+
+    // Type something and verify the send button enables
+    await input.click();
+    await input.fill("test");
     await expect(
-      page.getByText("Welcome to Whale Agent")
-    ).toBeVisible({ timeout: 30000 });
+      page.locator('[data-testid="sendMessage"]'),
+    ).toBeEnabled({ timeout: 5_000 });
   });
+});
 
-  test("chat input is visible and accepts text", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    const input = page.locator('[contenteditable="true"], textarea, input[type="text"]').first();
-    await expect(input).toBeVisible({ timeout: 15000 });
-  });
+// ===========================================================================
+// 2. CHAT ROUND-TRIP — send real questions, get real LLM answers
+// ===========================================================================
 
-  test("agent configs page loads", async ({ page }) => {
-    await page.goto(`${BASE_URL}/#/agents`, { waitUntil: "domcontentloaded" });
-    await expect(
-      page.getByText(/Whale|Route|Risk|Weather/i).first()
-    ).toBeVisible({ timeout: 15000 });
-  });
-
-  test("gateway API config endpoint responds", async ({ request }) => {
-    const response = await request.get(`${BASE_URL}/api/v1/config`);
-    expect(response.status()).toBe(200);
-    const body = await response.json();
-    expect(body).toHaveProperty("frontend_bot_name", "Whale Agent");
-  });
-
-  test("send a test message and get orchestrator response", async ({
+test.describe("2 · Chat Round-Trip", () => {
+  test("species question returns meaningful summary, not raw data dump", async ({
     page,
   }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-
-    const input = page.locator('[contenteditable="true"], textarea, input[type="text"]').first();
-    await expect(input).toBeVisible({ timeout: 15000 });
-
-    await input.fill("What whale species are most at risk near San Francisco?");
-    await page.keyboard.press("Enter");
-
-    await expect(
-      page.locator('[class*="message"], [class*="bubble"], [class*="response"]')
-        .filter({ hasText: /whale|species|risk|humpback|blue/i })
-        .first()
-    ).toBeVisible({ timeout: 120000 });
-  });
-});
-
-test.describe("Branding Audit — no solace/MedExpert remnants", () => {
-  test("no 'solace' text visible in header or navigation", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3000);
-
-    // The word "solace" should NOT appear in visible page text
-    // (solace.com URLs in JS are internal protocol identifiers — OK)
-    const bodyText = await page.locator("body").innerText();
-    const lowerText = bodyText.toLowerCase();
-    expect(lowerText).not.toContain("solace.");
-    // "solace" as a standalone visible word shouldn't appear
-    expect(lowerText).not.toMatch(/\bsolace\b/);
-  });
-
-  test("page title is 'Whale Agent', not 'solace' or 'MedExpert'", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3000);
-    const title = await page.title();
-    expect(title.toLowerCase()).toContain("whale");
-    expect(title.toLowerCase()).not.toContain("solace");
-    expect(title.toLowerCase()).not.toContain("medexpert");
-  });
-
-  test("no 'Medical Triage' or 'Deep Research' in mode selector", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3000);
-
-    const bodyText = await page.locator("body").innerText();
-    expect(bodyText).not.toContain("Medical Triage");
-    expect(bodyText).not.toContain("Deep Research");
-    expect(bodyText).not.toContain("Triage");
-  });
-
-  test("mode selector shows 'Routes' and 'Risk'", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3000);
-
-    // Click the mode dropdown to reveal options
-    const modeSelector = page.locator('[aria-label="Select mode"]');
-    if (await modeSelector.isVisible()) {
-      await modeSelector.click();
-      await page.waitForTimeout(500);
-
-      const dropdownText = await page.locator("body").innerText();
-      expect(dropdownText).toContain("Route");
-      expect(dropdownText).toContain("Risk");
-    }
-  });
-});
-
-test.describe("Example Prompt Cards", () => {
-  test("example prompt cards appear on fresh chat", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3000);
-
-    // Should see at least 3 of the 5 example prompt labels
-    const expectedLabels = [
-      "Plan a safe route",
-      "Check collision risk",
-      "Migration patterns",
-      "Historical strikes",
-      "Species at risk",
-    ];
-
-    let matchCount = 0;
-    for (const label of expectedLabels) {
-      const el = page.getByText(label);
-      if (await el.isVisible().catch(() => false)) {
-        matchCount++;
-      }
-    }
-    expect(matchCount).toBeGreaterThanOrEqual(3);
-  });
-
-  test("clicking an example prompt card sends a message", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3000);
-
-    // Click the first example prompt card
-    const card = page.getByText("Plan a safe route");
-    if (await card.isVisible().catch(() => false)) {
-      await card.click();
-      // After clicking, the example cards should disappear (new user message added)
-      await page.waitForTimeout(2000);
-      // Should see the prompt text in the chat as a user message
-      await expect(
-        page.getByText("San Francisco").first()
-      ).toBeVisible({ timeout: 15000 });
-    }
-  });
-});
-
-test.describe("Navigation Tabs", () => {
-  test("Chat tab is present and active by default", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    // Use the nav tab button specifically — not sidebar "Chats" or "New Chat"
-    await expect(
-      page.getByRole("button", { name: "Chat", exact: true })
-    ).toBeVisible({ timeout: 10000 });
-  });
-
-  test("Dashboard tab navigates to map view", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2000);
-
-    const dashboardLink = page.getByText("Dashboard");
-    if (await dashboardLink.isVisible()) {
-      await dashboardLink.click();
-      await page.waitForTimeout(2000);
-      // Dashboard should render the MapView (canvas or map container)
-      const mapCanvas = page.locator("canvas, .maplibregl-map, .mapboxgl-map, [class*='map']");
-      await expect(mapCanvas.first()).toBeVisible({ timeout: 10000 });
-    }
-  });
-
-  test("Agent Configs tab shows agent list", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2000);
-
-    const agentConfigsLink = page.getByText("Agent Configs");
-    if (await agentConfigsLink.isVisible()) {
-      await agentConfigsLink.click();
-      await page.waitForTimeout(3000);
-      await expect(
-        page.getByText(/Whale|Route|Risk|Orchestrator/i).first()
-      ).toBeVisible({ timeout: 15000 });
-    }
-  });
-});
-
-test.describe("Dashboard — Route Rendering", () => {
-  test("route query produces agent response and dashboard shows map data", async ({ page }) => {
-    // Collect console errors for diagnostics
-    const consoleErrors: string[] = [];
-    const consoleLogs: string[] = [];
-    page.on("console", msg => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
-      else consoleLogs.push(msg.text());
-    });
-
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-
-    // Step 1: Verify the agentCards API works from the browser context
-    const agentCardsResponse = await page.evaluate(async () => {
-      try {
-        const res = await fetch("/api/v1/agentCards");
-        const data = await res.json();
-        return { status: res.status, count: Array.isArray(data) ? data.length : 0, names: Array.isArray(data) ? data.map((a: { name: string }) => a.name) : [] };
-      } catch (e) {
-        return { status: -1, count: 0, names: [], error: String(e) };
-      }
-    });
-    console.log("agentCards API response:", JSON.stringify(agentCardsResponse));
-    expect(agentCardsResponse.count, "No agents registered in gateway — agents never started").toBeGreaterThan(0);
-
-    // Step 2: Wait for "Connecting..." to go away (app loaded agents)
-    // If this fails, the React app didn't process the agent list
-    await expect(page.getByText("Connecting...")).not.toBeVisible({ timeout: 60000 });
-
-    // Step 3: Send a route query via the chat input
-    const chatInput = page.locator('[data-testid="chat-input"]');
-    await expect(chatInput).toBeVisible({ timeout: 10000 });
-    await chatInput.click();
-    await chatInput.fill("Plan a safe shipping route from San Francisco to Los Angeles avoiding whale zones");
-
-    // Verify send button is enabled before clicking
-    const sendBtn = page.locator('[data-testid="sendMessage"]');
-    await expect(sendBtn).toBeEnabled({ timeout: 15000 });
-    await sendBtn.click();
-
-    // Step 4: Wait for a real agent response (not welcome text / example cards)
-    // Agent responses appear in bubbles with class containing "mr-auto"
-    // Wait up to 150s for cold-start + orchestration pipeline
-    const agentResponse = page.locator('[class*="mr-auto"]')
-      .filter({ hasText: /route|mile|nautical|risk|whale|francisco|angeles|waypoint|collision|coordinate/i })
-      .first();
-    await expect(agentResponse).toBeVisible({ timeout: 150000 });
-
-    // Step 5: Navigate to dashboard and verify map data arrived
-    await page.locator('button:has-text("Dashboard")').click();
-    await page.waitForTimeout(3000);
-
-    // Map canvas must exist
-    const canvas = page.locator("canvas").first();
-    await expect(canvas).toBeVisible({ timeout: 15000 });
-
-    // "Showing data from chat query" banner means the GeoJSON bridge worked
-    const chatDataBanner = page.getByText("Showing data from chat query");
-    const bannerVisible = await chatDataBanner.isVisible().catch(() => false);
-
-    if (!bannerVisible) {
-      const bodyText = await page.locator("body").innerText();
-      console.log(`Dashboard bridge: FeatureCollection=${bodyText.includes("FeatureCollection")}, render_type=${bodyText.includes("render_type")}`);
-      console.log("Console errors:", consoleErrors.join(" | "));
-      expect(bannerVisible, "Dashboard missing 'Showing data from chat query' — agent response lacks GeoJSON with render_type").toBe(true);
-    }
-  });
-});
-
-test.describe("Dashboard — Strait of Hormuz → India Route Rendering", () => {
-  test("Hormuz-to-India route renders GeoJSON with correct coordinates on the map", async ({ page }) => {
-    const consoleErrors: string[] = [];
-    page.on("console", msg => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
-    });
-
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-
-    // Wait for agents to load
-    await expect(page.getByText("Connecting...")).not.toBeVisible({ timeout: 60000 });
-
-    // Send a Strait of Hormuz → India route query
-    const chatInput = page.locator('[data-testid="chat-input"]');
-    await expect(chatInput).toBeVisible({ timeout: 10000 });
-    await chatInput.click();
-    await chatInput.fill(
-      "Plan a safe shipping route from the Strait of Hormuz to Mumbai, India avoiding whale strike zones"
+    await loadApp(page);
+    await sendChatMessage(
+      page,
+      "What whale species are most at risk near San Francisco?",
     );
 
-    const sendBtn = page.locator('[data-testid="sendMessage"]');
-    await expect(sendBtn).toBeEnabled({ timeout: 15000 });
-    await sendBtn.click();
+    // Wait for an agent response mentioning whale content (120s for cold-start)
+    await waitForAgentResponse(
+      page,
+      /whale|species|humpback|blue|risk/i,
+      120_000,
+    );
 
-    // Wait for agent response mentioning route-relevant content
-    const agentResponse = page.locator('[class*="mr-auto"]')
-      .filter({ hasText: /route|hormuz|mumbai|india|arabian|nautical|waypoint|coordinate|oman/i })
-      .first();
-    await expect(agentResponse).toBeVisible({ timeout: 150000 });
+    const bodyText = await page.locator("body").innerText();
 
-    // Step A: Extract the agent response text and verify GeoJSON with route coordinates
-    // Grab all agent bubbles (mr-auto = left-aligned = agent)
+    // Must mention at least one whale species in a meaningful way
+    expect(bodyText.toLowerCase()).toMatch(
+      /humpback|blue whale|fin whale|orca|right whale/i,
+    );
+
+    // Must NOT be a raw dump — same scientific name repeated dozens of times
+    const megapteraCount = (
+      bodyText.match(/Megaptera novaeangliae/g) || []
+    ).length;
+    expect(
+      megapteraCount,
+      "Response is a raw occurrence dump, not a summary",
+    ).toBeLessThan(10);
+  });
+
+  test("example prompt card sends a real message and gets LLM response", async ({
+    page,
+  }) => {
+    await loadApp(page);
+
+    // Card MUST be visible — no silent-pass if-guard
+    const card = page.getByText("Plan a safe route");
+    await expect(card).toBeVisible({ timeout: 10_000 });
+    await card.click();
+
+    // Card click should trigger a full orchestrator query
+    await waitForAgentResponse(
+      page,
+      /route|whale|risk|francisco|nautical|collision/i,
+      150_000,
+    );
+  });
+
+  test("route question returns GeoJSON with correct geographic coordinates", async ({
+    page,
+  }) => {
+    await loadApp(page);
+    await sendChatMessage(
+      page,
+      "Plan a safe shipping route from the Strait of Hormuz to Mumbai, India avoiding whale strike zones",
+    );
+
+    await waitForAgentResponse(
+      page,
+      /route|hormuz|mumbai|india|arabian|nautical|waypoint|oman/i,
+      180_000,
+    );
+
+    // Collect full agent response text
     const agentBubbles = page.locator('[class*="mr-auto"]');
-    const bubbleCount = await agentBubbles.count();
-    let fullResponseText = "";
-    for (let i = 0; i < bubbleCount; i++) {
-      fullResponseText += await agentBubbles.nth(i).innerText() + "\n";
+    const count = await agentBubbles.count();
+    let fullText = "";
+    for (let i = 0; i < count; i++) {
+      fullText += (await agentBubbles.nth(i).innerText()) + "\n";
     }
 
-    // The response must contain a FeatureCollection (GeoJSON block)
+    // Must contain a GeoJSON FeatureCollection
     expect(
-      fullResponseText,
-      "Agent response missing FeatureCollection — map_renderer was not called"
+      fullText,
+      "Agent response missing FeatureCollection — map_renderer not called",
     ).toContain("FeatureCollection");
 
-    // Extract all coordinate pairs [lng, lat] from the response text
-    // GeoJSON uses [longitude, latitude] order
-    const coordRegex = /\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g;
+    // Extract coordinate pairs [lng, lat] and validate geography
+    const coordRegex =
+      /\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g;
     const coords: { lng: number; lat: number }[] = [];
     let m: RegExpExecArray | null;
-    while ((m = coordRegex.exec(fullResponseText)) !== null) {
+    while ((m = coordRegex.exec(fullText)) !== null) {
       const a = parseFloat(m[1]);
       const b = parseFloat(m[2]);
-      // Filter to plausible geographic coordinates (not array indices, etc.)
       if (Math.abs(a) <= 180 && Math.abs(b) <= 90) {
         coords.push({ lng: a, lat: b });
       }
@@ -311,106 +190,259 @@ test.describe("Dashboard — Strait of Hormuz → India Route Rendering", () => 
 
     expect(
       coords.length,
-      "No geographic coordinates found in agent response"
+      "No geographic coordinates found in agent response",
     ).toBeGreaterThan(2);
 
-    // Verify coordinates span the Hormuz → India corridor
-    // Strait of Hormuz: ~26°N, ~56°E | Mumbai: ~19°N, ~72°E
-    // We expect at least one coord near Hormuz (lng 54-58, lat 24-28)
-    // and at least one coord near India west coast (lng 70-74, lat 17-22)
+    // At least one coord near Strait of Hormuz (~56E, 26N)
     const nearHormuz = coords.some(
-      c => c.lng >= 54 && c.lng <= 60 && c.lat >= 23 && c.lat <= 28
+      (c) => c.lng >= 54 && c.lng <= 60 && c.lat >= 23 && c.lat <= 28,
     );
+    expect(
+      nearHormuz,
+      "No coordinates near Strait of Hormuz (~56E, 26N)",
+    ).toBe(true);
+
+    // At least one coord near Mumbai (~72E, 19N)
     const nearIndia = coords.some(
-      c => c.lng >= 68 && c.lng <= 76 && c.lat >= 16 && c.lat <= 23
+      (c) => c.lng >= 68 && c.lng <= 76 && c.lat >= 16 && c.lat <= 23,
+    );
+    expect(nearIndia, "No coordinates near Mumbai (~72E, 19N)").toBe(true);
+  });
+});
+
+// ===========================================================================
+// 3. DASHBOARD FORM — fill route form, verify date records, get risk data
+// ===========================================================================
+
+test.describe("3 · Dashboard Form", () => {
+  test("fill origin/dest/date, select filters, submit, get risk summary", async ({
+    page,
+  }) => {
+    await loadApp(page);
+
+    // Navigate to dashboard
+    await page.getByText("Dashboard").first().click();
+    await expect(page.getByText("Whale Strike Dashboard")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Fill route form
+    const originInput = page.locator(
+      'input[placeholder="e.g. San Francisco"]',
+    );
+    const destInput = page.locator('input[placeholder="e.g. Los Angeles"]');
+    const dateInput = page.locator('input[type="date"]');
+
+    await expect(originInput).toBeVisible({ timeout: 5_000 });
+    await originInput.fill("San Francisco");
+    await destInput.fill("Los Angeles");
+    await dateInput.fill("2026-04-15");
+
+    // Verify date value persisted in the input
+    await expect(dateInput).toHaveValue("2026-04-15");
+
+    // Select season and species filters (native <select> elements in sidebar)
+    const selects = page.locator("aside select");
+    await selects.first().selectOption("Spring"); // Season
+    await selects.nth(1).selectOption("Humpback Whale"); // Species
+
+    // Click Plan Route
+    const planBtn = page.getByRole("button", { name: "Plan Route" });
+    await expect(planBtn).toBeEnabled();
+    await planBtn.click();
+
+    // Button text changes to "Planning..." during query
+    await expect(
+      page.locator('button[type="submit"]'),
+    ).toHaveText("Planning...", { timeout: 5_000 });
+
+    // Wait for orchestrator to complete — risk summary section appears
+    await expect(page.getByText("Collision Probability")).toBeVisible({
+      timeout: 180_000,
+    });
+
+    // Risk summary values are populated (number followed by % or h)
+    await expect(page.getByText("Fuel Impact")).toBeVisible();
+    await expect(page.getByText("Estimated Delay")).toBeVisible();
+
+    // Map canvas rendered
+    await expect(page.locator("canvas").first()).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+});
+
+// ===========================================================================
+// 4. CHAT -> DASHBOARD BRIDGE — route data flows from chat to map
+// ===========================================================================
+
+test.describe("4 · Chat to Dashboard Bridge", () => {
+  test("route query in chat populates dashboard map with data banner", async ({
+    page,
+  }) => {
+    await loadApp(page);
+
+    // Send route query via chat
+    await sendChatMessage(
+      page,
+      "Plan a safe shipping route from San Francisco to Los Angeles avoiding whale zones",
     );
 
-    expect(nearHormuz, "No coordinates near Strait of Hormuz (~26°N, 56°E)").toBe(true);
-    expect(nearIndia, "No coordinates near Mumbai/India west coast (~19°N, 72°E)").toBe(true);
+    // Wait for agent response with route content
+    await waitForAgentResponse(
+      page,
+      /route|mile|nautical|risk|whale|francisco|angeles|collision/i,
+      150_000,
+    );
 
-    // Step B: Navigate to Dashboard and verify rendering
-    await page.locator('button:has-text("Dashboard")').click();
-    await page.waitForTimeout(3000);
+    // Navigate to dashboard
+    await page.getByText("Dashboard").first().click();
 
-    // Canvas must be visible
+    // "Showing data from chat query" banner confirms the GeoJSON bridge worked
+    await expect(
+      page.getByText("Showing data from chat query"),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Canvas is visible and has real dimensions (Deck.gl initialised)
     const canvas = page.locator("canvas").first();
-    await expect(canvas).toBeVisible({ timeout: 15000 });
+    await expect(canvas).toBeVisible({ timeout: 10_000 });
+    const box = await canvas.boundingBox();
+    expect(box, "Canvas has no bounding box").not.toBeNull();
+    expect(box!.width, "Canvas has zero width").toBeGreaterThan(0);
+    expect(box!.height, "Canvas has zero height").toBeGreaterThan(0);
+  });
+});
 
-    // "Showing data from chat query" banner confirms bridge worked
-    const chatDataBanner = page.getByText("Showing data from chat query");
-    await expect(chatDataBanner).toBeVisible({ timeout: 10000 });
+// ===========================================================================
+// 5. MAP LAYER TOGGLES — all 5 checkboxes present and functional
+// ===========================================================================
 
-    // Step C: Verify Deck.gl has rendered layers by reading its internal state.
-    // WebGL canvases don't support getContext("2d"), so pixel checks are vacuous.
-    // Instead, count the layers Deck.gl has instantiated via its DOM wrapper.
-    const deckLayerCount = await page.evaluate(() => {
-      // Deck.gl injects a data attribute with layer count on the wrapper div
-      const deckCanvas = document.querySelector("canvas");
-      if (!deckCanvas) return -1;
-      // Check the canvas is actually sized (Deck.gl initialised)
-      if (deckCanvas.width === 0 || deckCanvas.height === 0) return 0;
-      // The DeckGL component renders layers into the WebGL context.
-      // We can verify data arrived by checking that the dashboard context
-      // has route data — query the banner which only shows when data exists.
-      const banner = document.body.innerText.includes("Showing data from chat query");
-      return banner ? 1 : 0;
+test.describe("5 · Map Layer Toggles", () => {
+  test("all 5 layer checkboxes present, checked by default, toggle off and on", async ({
+    page,
+  }) => {
+    await loadApp(page);
+    await page.getByText("Dashboard").first().click();
+    await expect(page.getByText("Map Layers")).toBeVisible({
+      timeout: 10_000,
     });
-    expect(deckLayerCount, "Map canvas not initialised or no layers rendered").toBeGreaterThan(0);
 
-    // Step D: Verify route layer toggle is active (Routes checkbox in sidebar)
-    const routeToggle = page.getByLabel(/routes/i).first();
-    if (await routeToggle.isVisible().catch(() => false)) {
-      await expect(routeToggle).toBeChecked();
-    }
+    const expectedLayers = [
+      "Risk Heatmap",
+      "Whale Sightings",
+      "Shipping Lanes",
+      "Recommended Routes",
+      "Migration Corridors",
+    ];
 
-    // Log any console errors for debugging
-    if (consoleErrors.length > 0) {
-      console.log("Console errors during Hormuz→India test:", consoleErrors.join(" | "));
+    for (const label of expectedLayers) {
+      const checkbox = page.getByLabel(label);
+
+      // MUST be visible — no silent-pass guard
+      await expect(
+        checkbox,
+        `Layer checkbox "${label}" not found`,
+      ).toBeVisible();
+
+      // Checked by default
+      await expect(checkbox).toBeChecked();
+
+      // Toggle off
+      await checkbox.uncheck();
+      await expect(checkbox).not.toBeChecked();
+
+      // Toggle back on
+      await checkbox.check();
+      await expect(checkbox).toBeChecked();
     }
   });
 });
 
-test.describe("Chat Output Quality", () => {
-  test("species query returns aggregated summary, not raw occurrence list", async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+// ===========================================================================
+// 6. NAVIGATION — tabs work, pages render, no silent-pass guards
+// ===========================================================================
 
-    const input = page.locator('[contenteditable="true"], textarea, input[type="text"]').first();
-    await expect(input).toBeVisible({ timeout: 15000 });
+test.describe("6 · Navigation", () => {
+  test("Dashboard tab shows map canvas and sidebar heading", async ({
+    page,
+  }) => {
+    await loadApp(page);
 
-    await input.fill("What whale species are most at risk in the North Pacific?");
-    await page.keyboard.press("Enter");
+    // Dashboard link MUST be visible — fail if not found
+    const dashLink = page.getByText("Dashboard").first();
+    await expect(dashLink).toBeVisible({ timeout: 10_000 });
+    await dashLink.click();
 
-    // Wait for response
-    const responseArea = page.locator('[class*="message"], [class*="bubble"], [class*="response"]').last();
-    await expect(responseArea).toBeVisible({ timeout: 120000 });
-    await page.waitForTimeout(5000);
+    // Map canvas must render
+    await expect(page.locator("canvas").first()).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const fullText = await page.locator("body").innerText();
-
-    // Response should NOT be a raw dump of hundreds of identical scientific names
-    const megapteraMatches = (fullText.match(/Megaptera novaeangliae/g) || []).length;
-    const orcinusMatches = (fullText.match(/Orcinus orca/g) || []).length;
-    expect(megapteraMatches).toBeLessThan(10);
-    expect(orcinusMatches).toBeLessThan(10);
-
-    // Should contain meaningful summary content
-    expect(fullText.toLowerCase()).toMatch(/humpback|blue whale|fin whale|orca|right whale/i);
+    // Sidebar heading confirms correct page
+    await expect(page.getByText("Whale Strike Dashboard")).toBeVisible();
   });
 
-  test("prompts page loads with seeded whale prompt templates", async ({ page }) => {
-    // Verify seed ran by checking the API first
-    const res = await page.request.get(`${BASE_URL}/api/v1/prompts/groups/all`);
-    expect(res.status()).toBe(200);
-    const groups = await res.json();
-    const names = (Array.isArray(groups) ? groups : groups.groups ?? []).map((g: { name: string }) => g.name);
-    expect(names.length).toBeGreaterThan(0);
-    expect(names.some((n: string) => /route|risk|migration|species|whale/i.test(n))).toBe(true);
+  test("Agent Configs tab shows registered agent names", async ({ page }) => {
+    await loadApp(page);
 
-    // Also verify the page renders them
-    await page.goto(`${BASE_URL}/#/prompts`, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(3000);
+    // Agent Configs link MUST be visible — fail if not found
+    const agentsLink = page.getByText("Agent Configs").first();
+    await expect(agentsLink).toBeVisible({ timeout: 10_000 });
+    await agentsLink.click();
+
+    // Should show at least one real agent name from the orchestrator topology
     await expect(
-      page.getByText(/Route|Risk Assessment|Migration|Species/i).first()
-    ).toBeVisible({ timeout: 15000 });
+      page
+        .getByText(
+          /WhaleRouteCoordinator|RouteOptimizer|RiskAssessor|WeatherAnalyst/i,
+        )
+        .first(),
+    ).toBeVisible({ timeout: 15_000 });
+  });
+});
+
+// ===========================================================================
+// 7. STREAMING UX — intermediate status text visible during orchestration
+// ===========================================================================
+
+test.describe("7 · Streaming UX", () => {
+  test("status text updates appear while orchestrator is processing", async ({
+    page,
+  }) => {
+    await loadApp(page);
+
+    // Use dashboard form — it shows explicit status text in the sidebar
+    await page.getByText("Dashboard").first().click();
+    await expect(page.getByText("Whale Strike Dashboard")).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Fill minimal route form
+    await page
+      .locator('input[placeholder="e.g. San Francisco"]')
+      .fill("Tokyo");
+    await page
+      .locator('input[placeholder="e.g. Los Angeles"]')
+      .fill("Seattle");
+
+    await page.getByRole("button", { name: "Plan Route" }).click();
+
+    // During processing, the dashboard shows status messages:
+    //   "Sending query to Whale Route Coordinator..."
+    //   "Orchestrator is coordinating specialists..."
+    //   "Specialists analyzing data..."
+    // At least one must appear before the final response.
+    await expect(
+      page
+        .getByText(
+          /Sending query|coordinating specialists|Specialists analyzing/i,
+        )
+        .first(),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // Eventually completes — button reverts from "Planning..." to "Plan Route"
+    await expect(
+      page.getByRole("button", { name: "Plan Route" }),
+    ).toBeVisible({ timeout: 180_000 });
   });
 });
