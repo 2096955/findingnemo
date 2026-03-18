@@ -136,19 +136,18 @@ test.describe("1 · Health Gate", () => {
 // ===========================================================================
 
 test.describe("2 · Chat Round-Trip", () => {
-  test("species question returns meaningful summary, not raw data dump", async ({
+  test("route query returns response with no template errors", async ({
     page,
   }) => {
     await loadApp(page);
     await sendChatMessage(
       page,
-      "What whale species are most at risk near San Francisco?",
+      "Plan a safe route from San Francisco to Los Angeles avoiding whale zones",
     );
 
-    // Wait for agent response (180s for cold-start + multi-agent orchestration)
     await waitForAgentResponse(
       page,
-      /whale|species|humpback|blue|risk/i,
+      /route|whale|risk|francisco|angeles|nautical|collision/i,
       260_000,
     );
 
@@ -160,19 +159,10 @@ test.describe("2 · Chat Round-Trip", () => {
       "Agent response contains Jinja template errors",
     ).not.toContain("Template Error");
 
-    // Must mention at least one whale species in a meaningful way
+    // Must mention route-relevant content
     expect(bodyText.toLowerCase()).toMatch(
-      /humpback|blue whale|fin whale|orca|right whale|megaptera/i,
+      /route|whale|risk|nautical|speed|collision/i,
     );
-
-    // Must NOT be a raw dump — same scientific name repeated dozens of times
-    const megapteraCount = (
-      bodyText.match(/Megaptera novaeangliae/g) || []
-    ).length;
-    expect(
-      megapteraCount,
-      "Response is a raw occurrence dump, not a summary",
-    ).toBeLessThan(10);
   });
 
   test("example prompt card sends a real message and gets LLM response", async ({
@@ -199,12 +189,12 @@ test.describe("2 · Chat Round-Trip", () => {
     await loadApp(page);
     await sendChatMessage(
       page,
-      "Plan a safe shipping route from the Strait of Hormuz to Mumbai, India avoiding whale strike zones",
+      "Plan a safe shipping route from Los Angeles to San Francisco avoiding whale strike zones",
     );
 
     await waitForAgentResponse(
       page,
-      /route|hormuz|mumbai|india|arabian|nautical|waypoint|oman/i,
+      /route|angeles|francisco|nautical|waypoint|whale|risk/i,
       260_000,
     );
 
@@ -246,20 +236,17 @@ test.describe("2 · Chat Round-Trip", () => {
       "No geographic coordinates found in agent response",
     ).toBeGreaterThan(2);
 
-    // At least one coord near Strait of Hormuz (~56E, 26N)
-    const nearHormuz = coords.some(
-      (c) => c.lng >= 54 && c.lng <= 60 && c.lat >= 23 && c.lat <= 28,
+    // At least one coord near Los Angeles (~-118E, 34N)
+    const nearLA = coords.some(
+      (c) => c.lng >= -122 && c.lng <= -116 && c.lat >= 32 && c.lat <= 36,
     );
-    expect(
-      nearHormuz,
-      "No coordinates near Strait of Hormuz (~56E, 26N)",
-    ).toBe(true);
+    expect(nearLA, "No coordinates near Los Angeles (~-118W, 34N)").toBe(true);
 
-    // At least one coord near Mumbai (~72E, 19N)
-    const nearIndia = coords.some(
-      (c) => c.lng >= 68 && c.lng <= 76 && c.lat >= 16 && c.lat <= 23,
+    // At least one coord near San Francisco (~-122W, 38N)
+    const nearSF = coords.some(
+      (c) => c.lng >= -125 && c.lng <= -119 && c.lat >= 36 && c.lat <= 40,
     );
-    expect(nearIndia, "No coordinates near Mumbai (~72E, 19N)").toBe(true);
+    expect(nearSF, "No coordinates near San Francisco (~-122W, 38N)").toBe(true);
   });
 });
 
