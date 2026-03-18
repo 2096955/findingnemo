@@ -131,29 +131,30 @@ def _build_queries(
 # Search engines (priority: Firecrawl → Brave → DuckDuckGo)
 # ---------------------------------------------------------------------------
 
-async def _search_firecrawl(query: str, max_results: int = 5) -> list[dict]:
+def _search_firecrawl(query: str, max_results: int = 5) -> list[dict]:
     """Search via Firecrawl (corporate-proxy-friendly).  Returns list of
-    {title, url, snippet}.  Requires FIRECRAWL_API_KEY env var."""
+    {title, url, snippet}.  Requires FIRECRAWL_API_KEY env var.
+    Uses the sync FirecrawlApp (v1.17+ dropped AsyncFirecrawlApp)."""
     firecrawl_key = os.environ.get("FIRECRAWL_API_KEY", "")
     if not firecrawl_key:
         return []
     try:
-        from firecrawl import AsyncFirecrawlApp  # type: ignore[import-untyped]
+        from firecrawl import FirecrawlApp  # type: ignore[import-untyped]
     except ImportError:
         log.warning("[web_intelligence] firecrawl-py not installed")
         return []
 
     try:
-        client = AsyncFirecrawlApp(api_key=firecrawl_key)
-        raw = await client.search(query, params={"limit": max_results})
-        results = raw if isinstance(raw, list) else raw.get("data", []) if isinstance(raw, dict) else []
+        client = FirecrawlApp(api_key=firecrawl_key)
+        raw = client.search(query, params={"limit": max_results})
+        data = raw.get("data", []) if isinstance(raw, dict) else raw if isinstance(raw, list) else []
         return [
             {
                 "title": r.get("title", r.get("metadata", {}).get("title", "")),
                 "url": r.get("url", r.get("sourceURL", "")),
                 "snippet": r.get("description", r.get("markdown", ""))[:300],
             }
-            for r in results
+            for r in data
         ]
     except Exception as exc:
         log.warning("[web_intelligence] Firecrawl search failed: %s", exc)
@@ -290,7 +291,7 @@ async def search_web_intelligence(
 
     for query in queries:
         # Priority: Firecrawl (corporate-friendly) → Brave → DuckDuckGo
-        results = await _search_firecrawl(query, max_results=3)
+        results = _search_firecrawl(query, max_results=3)
         if results:
             engine_used = "firecrawl"
         if not results and brave_api_key:
