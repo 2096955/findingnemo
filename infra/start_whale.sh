@@ -15,15 +15,12 @@ cd /app
 # ---------------------------------------------------------------------------
 REQUIRED_CONFIGS=(
   configs/agents/route_optimizer.yaml
-  configs/agents/risk_assessor.yaml
+  configs/agents/risk_analyst.yaml
   configs/agents/weather_analyst.yaml
   configs/agents/vessel_traffic_monitor.yaml
-  configs/agents/whale_migration_tracker.yaml
-  configs/agents/habitat_analyst.yaml
+  configs/agents/marine_ecology_specialist.yaml
   configs/agents/species_identifier.yaml
-  configs/agents/incident_analyst.yaml
   configs/agents/verifier.yaml
-  configs/agents/reviser.yaml
   configs/agents/orchestrator.yaml
   # webui.yaml MUST be last — uvicorn in the gateway keeps sam run alive.
   # All other configs must be loaded before the gateway initialises.
