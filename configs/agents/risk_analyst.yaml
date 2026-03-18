@@ -1,0 +1,110 @@
+# Whale Agent - Risk Analyst
+# Merged from: risk_assessor + incident_analyst
+# CRITICAL: agent_name MUST remain "RiskAssessor" — frontend + e2e tests depend on it
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: risk_analyst.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: risk_analyst_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: ${NAMESPACE}
+      supports_streaming: true
+      agent_name: "RiskAssessor"
+      display_name: "Risk Analyst"
+      model: *specialist_model
+
+      instruction: |
+        You are the Risk Analyst for Whale Agent, combining collision risk
+        scoring with historical incident pattern analysis.
+
+        **PRIMARY ROLE:**
+        1. Score collision risk for route segments using whale density, traffic
+           patterns, marine boundaries, and seasonal migration overlaps
+        2. Analyze historical strike records for patterns and contributing factors
+
+        **RISK SCORING WORKFLOW:**
+        - Use risk_scorer to compute risk scores per segment
+        - Use marine_cadastre MCP for boundary overlaps (sanctuaries, TSS zones)
+        - Use incident_analyzer for historical strike context
+
+        **RISK LEVELS:**
+        - CRITICAL (0.8-1.0): Active whale aggregation, mandatory slowdown
+        - HIGH (0.6-0.8): Migration corridor overlap, speed reduction recommended
+        - MODERATE (0.3-0.6): Seasonal presence possible, enhanced vigilance
+        - LOW (0.0-0.3): Minimal whale activity expected
+
+        **INCIDENT ANALYSIS:**
+        - Spatial: strike hotspots, proximity to shipping lanes
+        - Temporal: seasonal peaks, multi-year trends
+        - Species: which species most affected in the area
+        - Vessel: type, speed at impact, outcome severity
+
+        **RESPONSE FORMAT:**
+        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        {"findings": [...],
+         "risk_scores": [{"segment_id": 1, "score": 0.35, "level": "MODERATE",
+           "factors": [...], "mitigation": "..."}],
+         "incident_stats": {"total_strikes": N, "lethal_strikes": N,
+           "species_breakdown": {...}, "peak_months": [...],
+           "speed_threshold_lethal_kt": 10},
+         "sources": [...], "confidence": 0.85, "gaps": [...],
+         "execution_status": "success", "mcp_failures": []}
+
+      tools:
+        - tool_type: python
+          component_module: whale_tools.risk_scorer
+          component_base_path: src
+
+        - tool_type: python
+          component_module: whale_tools.incident_analyzer
+          component_base_path: src
+
+        - tool_type: python
+          component_module: whale_tools.memory_plane
+          component_base_path: src
+          tool_config:
+            redis_url: ${REDIS_URL, redis://localhost:6379/0}
+            cold_db_path: data/whale_cold.db
+
+        - tool_type: mcp
+          name: marine_cadastre_tools
+          connection_params:
+            type: sse
+            url: "http://localhost:9003/sse"
+            timeout: 30
+
+      session_service: *default_session_service
+      artifact_service: *default_artifact_service
+      max_llm_calls_per_task: 20
+
+      agent_card:
+        description: "Risk analyst. Scores collision risk, analyzes historical strike patterns, and identifies marine boundary overlaps."
+        defaultInputModes: ["text"]
+        defaultOutputModes: ["text"]
+        skills:
+          - id: risk_scoring
+            name: Collision Risk Scoring
+            description: Computes risk scores for route segments and geographic areas.
+          - id: strike_analysis
+            name: Strike Incident Analysis
+            description: Analyzes historical whale strike records and patterns.
+          - id: boundary_analysis
+            name: Marine Boundary Analysis
+            description: Checks route overlaps with marine protected areas.
+
+      agent_card_publishing: { interval_seconds: 10 }
+      agent_discovery: { enabled: true }
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["RiskAssessor"]
+        request_timeout_seconds: 600

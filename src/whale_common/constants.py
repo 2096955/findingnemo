@@ -51,11 +51,11 @@ DOMAIN_AGENT_ROUTING = {
         "keywords": ["vessel", "ship", "traffic", "ais", "tanker", "cargo", "container", "fleet", "density", "lane", "shipping", "maritime", "port", "harbor"],
     },
     "whale_migration": {
-        "agent": "WhaleMigrationTracker",
+        "agent": "MarineEcologySpecialist",
         "keywords": ["migration", "migration pattern", "seasonal", "breeding", "calving", "feeding ground", "migratory", "range", "movement", "corridor", "pathway"],
     },
     "habitat": {
-        "agent": "HabitatAnalyst",
+        "agent": "MarineEcologySpecialist",
         "keywords": ["habitat", "krill", "plankton", "feeding", "prey", "ecosystem", "environment", "upwelling", "nutrient", "biodiversity", "marine habitat"],
     },
     "species": {
@@ -63,7 +63,7 @@ DOMAIN_AGENT_ROUTING = {
         "keywords": ["species", "whale", "cetacean", "baleen", "toothed", "endangered", "conservation", "population", "iucn", "protected", "threatened", "vulnerable"],
     },
     "incidents": {
-        "agent": "IncidentAnalyst",
+        "agent": "RiskAssessor",
         "keywords": ["incident", "strike", "collision", "historical", "accident", "record", "database", "trend", "fatality", "injury", "mortality", "report"],
     },
 }

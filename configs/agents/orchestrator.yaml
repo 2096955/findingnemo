@@ -115,13 +115,11 @@ apps:
 
         Available specialists (call ONLY those in all_agents):
         - peer_RouteOptimizer — route calculation and optimization
-        - peer_RiskAssessor — collision risk scoring
+        - peer_RiskAssessor — collision risk scoring and historical incident analysis
         - peer_WeatherAnalyst — marine weather and ocean conditions
         - peer_VesselTrafficMonitor — AIS vessel traffic data
-        - peer_WhaleMigrationTracker — seasonal migration patterns
-        - peer_HabitatAnalyst — feeding/breeding hotspots
+        - peer_MarineEcologySpecialist — migration patterns and habitat hotspots
         - peer_SpeciesIdentifier — species identification and conservation status
-        - peer_IncidentAnalyst — historical whale strike data
 
         **STEP 3 — COLLECT**
         After specialist responses arrive:
@@ -234,10 +232,8 @@ apps:
           - "RiskAssessor"
           - "WeatherAnalyst"
           - "VesselTrafficMonitor"
-          - "WhaleMigrationTracker"
-          - "HabitatAnalyst"
+          - "MarineEcologySpecialist"
           - "SpeciesIdentifier"
-          - "IncidentAnalyst"
           - "Verifier"
           - "Reviser"
         request_timeout_seconds: 120
