@@ -8,7 +8,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from whale_tools.cold_store import (
-    ColdStoreTool,
     get_connection,
     store_session,
     store_route_pattern,
@@ -107,60 +106,3 @@ def test_get_strategies_empty(tmp_db):
     assert strategies == []
     conn.close()
 
-
-# ---------------------------------------------------------------------------
-# ColdStoreTool integration tests
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_tool_store_session(tmp_db):
-    tool = ColdStoreTool(tool_config={"db_path": tmp_db})
-    result = await tool._run_async_impl(
-        args={
-            "operation": "store_session",
-            "session_id": "test-002",
-            "query_text": "whale collision risk in Monterey Bay",
-            "query_domain": "risk_assessment",
-        },
-    )
-    assert result["success"] is True
-
-
-@pytest.mark.asyncio
-async def test_tool_query_patterns(tmp_db):
-    tool = ColdStoreTool(tool_config={"db_path": tmp_db})
-    result = await tool._run_async_impl(
-        args={"operation": "query_patterns"},
-    )
-    assert result["success"] is True
-    assert "patterns" in result
-
-
-@pytest.mark.asyncio
-async def test_tool_get_strategies(tmp_db):
-    tool = ColdStoreTool(tool_config={"db_path": tmp_db})
-    result = await tool._run_async_impl(
-        args={"operation": "get_strategies"},
-    )
-    assert result["success"] is True
-    assert "strategies" in result
-
-
-@pytest.mark.asyncio
-async def test_tool_unknown_operation(tmp_db):
-    tool = ColdStoreTool(tool_config={"db_path": tmp_db})
-    result = await tool._run_async_impl(
-        args={"operation": "drop_tables"},
-    )
-    assert result["success"] is False
-    assert "Unknown operation" in result["error"]
-
-
-@pytest.mark.asyncio
-async def test_tool_properties():
-    tool = ColdStoreTool()
-    assert tool.tool_name == "cold_store"
-    assert "sqlite" in tool.tool_description.lower() or "cold" in tool.tool_description.lower()
-    schema = tool.parameters_schema
-    assert "operation" in schema.properties

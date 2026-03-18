@@ -10,8 +10,8 @@ from whale_tools.route_calculator import (
     RouteCalculatorTool,
     compute_route,
     _haversine_nm,
-    _haversine_km,
 )
+from whale_common.geo_utils import haversine_km as _haversine_km
 
 
 # ---------------------------------------------------------------------------
