@@ -7,6 +7,7 @@ If a prompt group with the same name already exists, it is skipped.
 """
 
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -14,7 +15,8 @@ import urllib.error
 from pathlib import Path
 
 
-GATEWAY_URL = "http://localhost:8080"
+GATEWAY_PORT = os.environ.get("FASTAPI_PORT", os.environ.get("PORT", "8080"))
+GATEWAY_URL = f"http://localhost:{GATEWAY_PORT}"
 SEED_FILE = Path(__file__).parent.parent / "data" / "seed_prompts.json"
 MAX_WAIT_SECONDS = 180
 
