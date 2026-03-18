@@ -5,6 +5,35 @@ const BASE_URL =
   "https://whale-agent-534348290993.us-central1.run.app";
 
 // ---------------------------------------------------------------------------
+// Global beforeEach — wait for any orphaned orchestration runs to drain
+// before starting each LLM-dependent test. Without this, sequential tests
+// pile up concurrent agent chains that starve each other on a shared CPU.
+// ---------------------------------------------------------------------------
+test.beforeEach(async ({ request }, testInfo) => {
+  // Only add the drain wait for LLM-dependent test groups (not health/nav/toggles)
+  const needsDrain = testInfo.title.match(
+    /species|prompt card|GeoJSON|fill origin|chat populates|orchestrator is processing/i,
+  );
+  if (!needsDrain) return;
+
+  // Poll /api/v1/agentCards — if it responds quickly the container is idle
+  // (busy containers are slow to respond). Wait up to 90s for idle state.
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    const start = Date.now();
+    try {
+      const res = await request.get(`${BASE_URL}/api/v1/agentCards`, { timeout: 3000 });
+      const elapsed = Date.now() - start;
+      // Container is considered idle if the API responds in < 1s
+      if (res.ok() && elapsed < 1000) break;
+    } catch {
+      // Container busy/overloaded — keep waiting
+    }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Helpers — shared setup used by multiple test groups
 // ---------------------------------------------------------------------------
 
