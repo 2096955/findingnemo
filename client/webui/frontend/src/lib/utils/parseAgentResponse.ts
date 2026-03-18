@@ -164,6 +164,7 @@ export interface ParsedAgentResponse {
     migrationCorridors: Route[];
     riskSummary: RiskSummary | null;
     alerts: SpeedAlert[];
+    googleMapsEmbedUrl?: string;
     rawText: string;
 }
 
@@ -217,6 +218,15 @@ export function parseAgentResponse(responseText: string): ParsedAgentResponse {
 
     result.riskSummary = parseRiskSummary(responseText, jsonBlocks);
     result.alerts = parseAlerts(responseText, jsonBlocks);
+
+    // Extract Google Maps embed URL from google_maps_router output
+    for (const block of jsonBlocks) {
+        const b = block as Record<string, unknown>;
+        if (typeof b.google_maps_embed_url === "string" && b.google_maps_embed_url) {
+            result.googleMapsEmbedUrl = b.google_maps_embed_url;
+            break;
+        }
+    }
 
     return result;
 }

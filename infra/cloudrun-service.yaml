@@ -39,6 +39,8 @@ spec:
               value: "fc-2146c607264b4ea899e16c2a7bc951ec"
             - name: BRAVE_SEARCH_API_KEY
               value: "BSAywatPDpXvmOj72JwHZnVelu0jPHx"
+            - name: GOOGLE_MAPS_API_KEY
+              value: "AIzaSyBOrXdwsFvLKSKRe8KUFJwnCslpkgvq6Vo"
           startupProbe:
             failureThreshold: 1
             periodSeconds: 240

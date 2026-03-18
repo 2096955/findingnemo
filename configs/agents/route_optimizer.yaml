@@ -53,6 +53,15 @@ apps:
         5. Store route data in memory_plane (namespace: evidence)
         6. Return a structured comparison of route options
 
+        **TOOL USAGE:**
+        - google_maps_router — CALL FIRST for real-world route data (actual maritime
+          distances, port coordinates, navigation waypoints from Google Maps).
+          Pass exclusion_zones for any closed straits/conflict areas.
+        - route_calculator — CALL SECOND with the waypoints from google_maps_router,
+          plus whale risk_zones to apply whale-avoidance offsets.
+        - fuel_estimator — CALL THIRD to compute fuel impact for each route variant.
+        Combine both: real route from Google Maps + whale safety from route_calculator.
+
         **ROUTE TYPES:**
         - "direct" — shortest path, may traverse high-risk zones
         - "standard_avoidance" — avoids known migration corridors (+5-15% distance)
@@ -84,6 +93,13 @@ apps:
         - tool_type: python
           component_module: whale_tools.fuel_estimator
           component_base_path: src
+
+        - tool_type: python
+          component_module: whale_tools.google_maps_router
+          component_base_path: src
+          tool_config:
+            gemini_api_key: ${GEMINI_API_KEY,}
+            maps_api_key: ${GOOGLE_MAPS_API_KEY,}
 
         - tool_type: python
           component_module: whale_tools.memory_plane

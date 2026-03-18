@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef } from "react";
 import { MapView, type LayerVisibility, type RiskPoint, type Sighting, type Route } from "./MapView";
 import { Sidebar, type RouteQuery, type RiskSummary, type SpeedAlert } from "./Sidebar";
+import { GoogleMapsEmbed } from "./GoogleMapsEmbed";
 import { api } from "@/lib/api/client";
 import { parseAgentResponse } from "@/lib/utils/parseAgentResponse";
 import { useDashboardData } from "@/lib/hooks";
@@ -45,6 +46,11 @@ export function DashboardPage() {
     const [statusText, setStatusText] = useState("");
     const [error, setError] = useState<string | null>(null);
 
+    // Map tab state
+    const [activeMapTab, setActiveMapTab] = useState<"whale-layers" | "google-route">("whale-layers");
+    const [lastOriginPort, setLastOriginPort] = useState("");
+    const [lastDestPort, setLastDestPort] = useState("");
+
     // Shared data from chat responses
     const { chatDashboardData } = useDashboardData();
 
@@ -56,6 +62,7 @@ export function DashboardPage() {
     const migrationCorridors = localMigrationCorridors.length > 0 ? localMigrationCorridors : (chatDashboardData?.migrationCorridors ?? []);
     const riskSummary = localRiskSummary ?? chatDashboardData?.riskSummary ?? null;
     const alerts = localAlerts.length > 0 ? localAlerts : (chatDashboardData?.alerts ?? []);
+    const googleMapsEmbedUrl = chatDashboardData?.googleMapsEmbedUrl ?? "";
 
     // Track whether we're showing chat data (for the status banner)
     const hasChatData = chatDashboardData !== null && (
@@ -114,6 +121,10 @@ export function DashboardPage() {
      */
     const handleRouteQuery = useCallback(
         async (query: RouteQuery) => {
+            // Track port names for Google Maps embed
+            setLastOriginPort(query.originPort);
+            setLastDestPort(query.destinationPort);
+
             // Clean up any existing SSE connection
             if (eventSourceRef.current) {
                 eventSourceRef.current.close();
@@ -283,14 +294,48 @@ export function DashboardPage() {
                         ) : null}
                     </div>
                 )}
-                <MapView
-                    riskData={riskData}
-                    sightings={sightings}
-                    routes={routes}
-                    shippingLanes={shippingLanes}
-                    migrationCorridors={migrationCorridors}
-                    layerVisibility={layerVisibility}
-                />
+
+                {/* Map tab switcher */}
+                <div className="absolute right-4 top-4 z-10 flex gap-1 rounded-lg bg-background/90 p-1 shadow-lg backdrop-blur-sm"
+                     style={{ borderColor: "var(--border)", border: "1px solid" }}>
+                    <button
+                        onClick={() => setActiveMapTab("whale-layers")}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            activeMapTab === "whale-layers"
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:text-foreground"
+                        }`}
+                    >
+                        Whale Layers
+                    </button>
+                    <button
+                        onClick={() => setActiveMapTab("google-route")}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            activeMapTab === "google-route"
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:text-foreground"
+                        }`}
+                    >
+                        Google Route
+                    </button>
+                </div>
+
+                {activeMapTab === "whale-layers" ? (
+                    <MapView
+                        riskData={riskData}
+                        sightings={sightings}
+                        routes={routes}
+                        shippingLanes={shippingLanes}
+                        migrationCorridors={migrationCorridors}
+                        layerVisibility={layerVisibility}
+                    />
+                ) : (
+                    <GoogleMapsEmbed
+                        embedUrl={googleMapsEmbedUrl}
+                        origin={lastOriginPort}
+                        destination={lastDestPort}
+                    />
+                )}
             </div>
         </div>
     );
