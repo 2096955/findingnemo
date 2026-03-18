@@ -250,6 +250,125 @@ test.describe("Dashboard — Route Rendering", () => {
   });
 });
 
+test.describe("Dashboard — Strait of Hormuz → India Route Rendering", () => {
+  test("Hormuz-to-India route renders GeoJSON with correct coordinates on the map", async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on("console", msg => {
+      if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+
+    await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+
+    // Wait for agents to load
+    await expect(page.getByText("Connecting...")).not.toBeVisible({ timeout: 60000 });
+
+    // Send a Strait of Hormuz → India route query
+    const chatInput = page.locator('[data-testid="chat-input"]');
+    await expect(chatInput).toBeVisible({ timeout: 10000 });
+    await chatInput.click();
+    await chatInput.fill(
+      "Plan a safe shipping route from the Strait of Hormuz to Mumbai, India avoiding whale strike zones"
+    );
+
+    const sendBtn = page.locator('[data-testid="sendMessage"]');
+    await expect(sendBtn).toBeEnabled({ timeout: 15000 });
+    await sendBtn.click();
+
+    // Wait for agent response mentioning route-relevant content
+    const agentResponse = page.locator('[class*="mr-auto"]')
+      .filter({ hasText: /route|hormuz|mumbai|india|arabian|nautical|waypoint|coordinate|oman/i })
+      .first();
+    await expect(agentResponse).toBeVisible({ timeout: 180000 });
+
+    // Step A: Extract the agent response text and verify GeoJSON with route coordinates
+    // Grab all agent bubbles (mr-auto = left-aligned = agent)
+    const agentBubbles = page.locator('[class*="mr-auto"]');
+    const bubbleCount = await agentBubbles.count();
+    let fullResponseText = "";
+    for (let i = 0; i < bubbleCount; i++) {
+      fullResponseText += await agentBubbles.nth(i).innerText() + "\n";
+    }
+
+    // The response must contain a FeatureCollection (GeoJSON block)
+    expect(
+      fullResponseText,
+      "Agent response missing FeatureCollection — map_renderer was not called"
+    ).toContain("FeatureCollection");
+
+    // Extract all coordinate pairs [lng, lat] from the response text
+    // GeoJSON uses [longitude, latitude] order
+    const coordRegex = /\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g;
+    const coords: { lng: number; lat: number }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = coordRegex.exec(fullResponseText)) !== null) {
+      const a = parseFloat(m[1]);
+      const b = parseFloat(m[2]);
+      // Filter to plausible geographic coordinates (not array indices, etc.)
+      if (Math.abs(a) <= 180 && Math.abs(b) <= 90) {
+        coords.push({ lng: a, lat: b });
+      }
+    }
+
+    expect(
+      coords.length,
+      "No geographic coordinates found in agent response"
+    ).toBeGreaterThan(2);
+
+    // Verify coordinates span the Hormuz → India corridor
+    // Strait of Hormuz: ~26°N, ~56°E | Mumbai: ~19°N, ~72°E
+    // We expect at least one coord near Hormuz (lng 54-58, lat 24-28)
+    // and at least one coord near India west coast (lng 70-74, lat 17-22)
+    const nearHormuz = coords.some(
+      c => c.lng >= 54 && c.lng <= 60 && c.lat >= 23 && c.lat <= 28
+    );
+    const nearIndia = coords.some(
+      c => c.lng >= 68 && c.lng <= 76 && c.lat >= 16 && c.lat <= 23
+    );
+
+    expect(nearHormuz, "No coordinates near Strait of Hormuz (~26°N, 56°E)").toBe(true);
+    expect(nearIndia, "No coordinates near Mumbai/India west coast (~19°N, 72°E)").toBe(true);
+
+    // Step B: Navigate to Dashboard and verify rendering
+    await page.locator('button:has-text("Dashboard")').click();
+    await page.waitForTimeout(3000);
+
+    // Canvas must be visible
+    const canvas = page.locator("canvas").first();
+    await expect(canvas).toBeVisible({ timeout: 15000 });
+
+    // "Showing data from chat query" banner confirms bridge worked
+    const chatDataBanner = page.getByText("Showing data from chat query");
+    await expect(chatDataBanner).toBeVisible({ timeout: 10000 });
+
+    // Step C: Verify the canvas is not blank (has rendered pixels)
+    const canvasHasContent = await page.evaluate(() => {
+      const c = document.querySelector("canvas");
+      if (!c) return false;
+      const ctx = c.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        // WebGL canvas — can't read pixels via 2d context, but if the
+        // canvas exists and has dimensions, Deck.gl has initialised
+        return c.width > 0 && c.height > 0;
+      }
+      // 2d canvas — sample pixels to check for non-blank content
+      const data = ctx.getImageData(0, 0, c.width, c.height).data;
+      return data.some(v => v !== 0);
+    });
+    expect(canvasHasContent, "Map canvas appears blank — no layers rendered").toBe(true);
+
+    // Step D: Verify route layer toggle is active (Routes checkbox in sidebar)
+    const routeToggle = page.getByLabel(/routes/i).first();
+    if (await routeToggle.isVisible().catch(() => false)) {
+      await expect(routeToggle).toBeChecked();
+    }
+
+    // Log any console errors for debugging
+    if (consoleErrors.length > 0) {
+      console.log("Console errors during Hormuz→India test:", consoleErrors.join(" | "));
+    }
+  });
+});
+
 test.describe("Chat Output Quality", () => {
   test("species query returns aggregated summary, not raw occurrence list", async ({ page }) => {
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
