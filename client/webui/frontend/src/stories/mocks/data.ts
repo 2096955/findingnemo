@@ -3,9 +3,9 @@ import type { MessageFE } from "@/lib/types/fe";
 
 export const mockAgentCards: AgentCard[] = [
     {
-        name: "OrchestratorAgent",
+        name: "WhaleRouteCoordinator",
         description: "The Orchestrator component. It manages tasks, and coordinating multi-agent workflows.",
-        url: "medexpert:beta/a2a/v1/agent/request/OrchestratorAgent",
+        url: "whale-agent:beta/a2a/v1/agent/request/WhaleRouteCoordinator",
         version: "1.0.0-alpha",
         capabilities: {
             streaming: true,

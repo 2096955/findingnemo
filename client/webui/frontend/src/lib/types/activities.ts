@@ -254,9 +254,9 @@ export interface VisualizerStep {
     type: VisualizerStepType;
     timestamp: string; // ISO 8601 timestamp of the primary event forming this step
     durationMs?: number; // Optional: Calculated duration of this step in milliseconds
-    title: string; // Concise, human-readable title for the step (e.g., "User Input", "OrchestratorAgent: LLM Call")
-    source?: string; // Entity initiating the step (e.g., "User", "OrchestratorAgent")
-    target?: string; // Entity receiving or targeted by the step (e.g., "OrchestratorAgent", "LLM", "ImageGeneratorAgent")
+    title: string; // Concise, human-readable title for the step (e.g., "User Input", "WhaleRouteCoordinator: LLM Call")
+    source?: string; // Entity initiating the step (e.g., "User", "WhaleRouteCoordinator")
+    target?: string; // Entity receiving or targeted by the step (e.g., "WhaleRouteCoordinator", "LLM", "ImageGeneratorAgent")
     data: {
         text?: string; // For USER_REQUEST, AGENT_RESPONSE_TEXT
         llmCall?: LLMCallData; // For AGENT_LLM_CALL

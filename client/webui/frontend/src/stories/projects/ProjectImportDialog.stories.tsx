@@ -185,7 +185,7 @@ export const ValidProjectWithArtifacts: Story = {
             name: "E-commerce Platform",
             description: "Online shopping platform with user authentication and payment processing",
             systemPrompt: "You are a helpful assistant for e-commerce development tasks.",
-            defaultAgentId: "OrchestratorAgent",
+            defaultAgentId: "WhaleRouteCoordinator",
             artifactCount: 6,
         });
 

@@ -42,7 +42,7 @@ export const Default: Story = {
             messages: mockMessages,
             isResponding: false,
             isCancelling: false,
-            selectedAgentName: "OrchestratorAgent",
+            selectedAgentName: "WhaleRouteCoordinator",
             isSidePanelCollapsed: true,
             activeSidePanelTab: "files",
         },
@@ -66,7 +66,7 @@ export const WithLoadingMessage: Story = {
             messages: [...mockMessages, mockLoadingMessage],
             isResponding: true,
             isCancelling: false,
-            selectedAgentName: "OrchestratorAgent",
+            selectedAgentName: "WhaleRouteCoordinator",
             isSidePanelCollapsed: true,
             activeSidePanelTab: "files",
         },
@@ -90,7 +90,7 @@ export const WithLongInput: Story = {
             messages: mockMessages,
             isResponding: false,
             isCancelling: false,
-            selectedAgentName: "OrchestratorAgent",
+            selectedAgentName: "WhaleRouteCoordinator",
             isSidePanelCollapsed: true,
             activeSidePanelTab: "files",
         },
@@ -119,7 +119,7 @@ export const WithSidePanelOpen: Story = {
             messages: mockMessages,
             isResponding: false,
             isCancelling: false,
-            selectedAgentName: "OrchestratorAgent",
+            selectedAgentName: "WhaleRouteCoordinator",
             isSidePanelCollapsed: true,
             isSidePanelTransitioning: false,
             activeSidePanelTab: "files",
@@ -149,7 +149,7 @@ export const NewSessionDialog: Story = {
             messages: mockMessages,
             isResponding: false,
             isCancelling: false,
-            selectedAgentName: "OrchestratorAgent",
+            selectedAgentName: "WhaleRouteCoordinator",
             isSidePanelCollapsed: true,
             isSidePanelTransitioning: false,
             activeSidePanelTab: "files",
@@ -186,7 +186,7 @@ export const WithPromptDialogOpen: Story = {
             messages: mockMessages,
             isResponding: false,
             isCancelling: false,
-            selectedAgentName: "OrchestratorAgent",
+            selectedAgentName: "WhaleRouteCoordinator",
             isSidePanelCollapsed: true,
             isSidePanelTransitioning: false,
             activeSidePanelTab: "files",
@@ -213,7 +213,7 @@ export const AgentDropdownFiltersWorkflows: Story = {
             messages: mockMessages,
             isResponding: false,
             isCancelling: false,
-            selectedAgentName: "OrchestratorAgent",
+            selectedAgentName: "WhaleRouteCoordinator",
             isSidePanelCollapsed: true,
             activeSidePanelTab: "files",
         },
@@ -224,8 +224,8 @@ export const AgentDropdownFiltersWorkflows: Story = {
     play: async ({ canvasElement }) => {
         const canvas = within(canvasElement);
 
-        // Verify that OrchestratorAgent text is visible (selected)
-        await canvas.findByText("OrchestratorAgent");
+        // Verify that WhaleRouteCoordinator text is visible (selected)
+        await canvas.findByText("WhaleRouteCoordinator");
 
         // Verify that MockWorkflow is NOT visible anywhere on the page
         // This confirms workflows are filtered out from the agent dropdown

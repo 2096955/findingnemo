@@ -33,7 +33,7 @@ export const Default: Story = {
             messages: mockMessages,
             isResponding: false,
             isCancelling: false,
-            selectedAgentName: "OrchestratorAgent",
+            selectedAgentName: "WhaleRouteCoordinator",
             isSidePanelCollapsed: true,
             activeSidePanelTab: "files",
             artifacts: [{ filename: "test.md", size: 1024, mime_type: "text/markdown", last_modified: new Date().toISOString() }],

@@ -71,41 +71,49 @@ export function MapView({
     const [viewState, setViewState] = useState(INITIAL_VIEW_STATE);
     const hasFitted = useRef(false);
 
-    // Auto-fit map to data bounds when route/risk data first arrives
+    // Auto-fit map to data bounds when route data arrives
     useEffect(() => {
         if (hasFitted.current) return;
+        // Only fit once routes are present — avoid fitting to partial risk-only data
+        if (routes.length === 0 && shippingLanes.length === 0 && migrationCorridors.length === 0) return;
 
-        // Collect all coordinates from every data source
-        const lngs: number[] = [];
-        const lats: number[] = [];
+        // Collect all coordinates from every data source (iterative to avoid stack overflow)
+        let minLng = Infinity, maxLng = -Infinity;
+        let minLat = Infinity, maxLat = -Infinity;
+        let count = 0;
 
-        for (const r of routes) {
-            for (const [lng, lat] of r.path) { lngs.push(lng); lats.push(lat); }
+        const push = (lng: number, lat: number) => {
+            if (lng < minLng) minLng = lng;
+            if (lng > maxLng) maxLng = lng;
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+            count++;
+        };
+
+        for (const r of routes) { for (const [lng, lat] of r.path) push(lng, lat); }
+        for (const r of shippingLanes) { for (const [lng, lat] of r.path) push(lng, lat); }
+        for (const r of migrationCorridors) { for (const [lng, lat] of r.path) push(lng, lat); }
+        for (const p of riskData) push(p.lng, p.lat);
+        for (const s of sightings) push(s.lng, s.lat);
+
+        if (count < 2) return;
+
+        // Handle antimeridian crossing: if the longitude span > 180°,
+        // the route crosses the date line — shift the western edge east by 360°
+        if (maxLng - minLng > 180) {
+            minLng += 360;
+            // Swap so min < max after the shift
+            [minLng, maxLng] = [maxLng, minLng];
         }
-        for (const r of shippingLanes) {
-            for (const [lng, lat] of r.path) { lngs.push(lng); lats.push(lat); }
-        }
-        for (const r of migrationCorridors) {
-            for (const [lng, lat] of r.path) { lngs.push(lng); lats.push(lat); }
-        }
-        for (const p of riskData) { lngs.push(p.lng); lats.push(p.lat); }
-        for (const s of sightings) { lngs.push(s.lng); lats.push(s.lat); }
 
-        if (lngs.length < 2) return;
-
-        const minLng = Math.min(...lngs);
-        const maxLng = Math.max(...lngs);
-        const minLat = Math.min(...lats);
-        const maxLat = Math.max(...lats);
-
-        // Centre on the bounding box with padding
-        const centerLng = (minLng + maxLng) / 2;
+        const rawCenterLng = (minLng + maxLng) / 2;
+        // Normalize center longitude to [-180, 180]
+        const centerLng = ((rawCenterLng + 540) % 360) - 180;
         const centerLat = (minLat + maxLat) / 2;
         const spanLng = Math.max(maxLng - minLng, 1);
         const spanLat = Math.max(maxLat - minLat, 1);
-        // Rough zoom: 360° = zoom 0, 180° = zoom 1, etc.
         const zoom = Math.max(0, Math.min(12,
-            Math.floor(Math.log2(360 / Math.max(spanLng, spanLat))) - 0.5
+            Math.log2(360 / Math.max(spanLng, spanLat)) - 1
         ));
 
         setViewState(prev => ({ ...prev, latitude: centerLat, longitude: centerLng, zoom }));
