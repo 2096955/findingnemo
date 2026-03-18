@@ -32,10 +32,20 @@ apps:
 
         **WORKFLOW:**
         1. Receive route parameters from the Orchestrator (origin, destination, vessel type)
-        2. Use route_calculator to compute candidate routes with waypoints
-        3. Use fuel_estimator to compute fuel impact for each route variant
-        4. Store route data in memory_plane (namespace: evidence)
-        5. Return a structured comparison of route options
+        2. Check for EXCLUSION ZONES in the Orchestrator's message. If the message
+           contains "⚠️ EXCLUSION ZONE" or similar conflict/closure warnings, you
+           MUST reroute around those regions entirely:
+           - Choose alternative waypoints that bypass the excluded area
+           - Pass those exclusion areas as risk_zones to route_calculator with a
+             large radius_km (e.g. 500-1000km) to force full avoidance
+           - For Strait of Hormuz closure → route via Cape of Good Hope
+           - For Suez/Red Sea closure → route via Cape of Good Hope
+           - For Malacca Strait closure → route via Lombok/Sunda Strait
+           - For Panama Canal closure → route via Cape Horn or Suez
+        3. Use route_calculator to compute candidate routes with waypoints
+        4. Use fuel_estimator to compute fuel impact for each route variant
+        5. Store route data in memory_plane (namespace: evidence)
+        6. Return a structured comparison of route options
 
         **ROUTE TYPES:**
         - "direct" — shortest path, may traverse high-risk zones
