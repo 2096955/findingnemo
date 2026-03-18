@@ -59,6 +59,7 @@ export function GoogleMapsEmbed({
     }
 
     return (
+        /* sandbox intentionally omitted: Maps Embed API requires allow-scripts and allow-same-origin */
         <iframe
             src={url}
             width="100%"

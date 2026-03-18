@@ -31,7 +31,7 @@ apps:
         JSON with waypoints, distances, fuel impact estimates, and risk corridors.
 
         **WORKFLOW:**
-        1. Receive route parameters from the Orchestrator (origin, destination, vessel type)
+        1. Receive route parameters from the Orchestrator (origin, destination, vessel type).
         2. Check for EXCLUSION ZONES or BOTTLENECK WARNINGS in the Orchestrator's
            message. If present, handle as follows:
 
@@ -43,24 +43,18 @@ apps:
              physically impossible, not just risky.
 
            REROUTABLE CLOSURE (strait closed but ports are not trapped):
-           - Pass the closed area as risk_zones to route_calculator with a large
-             radius_km (500-1000km) to force full avoidance.
+           - Pass the closed area as exclusion_zones to google_maps_router AND
+             as risk_zones (radius_km 500-1000) to route_calculator.
            - For Suez/Red Sea closure → route via Cape of Good Hope
            - For Malacca Strait closure → route via Lombok or Sunda Strait
            - For Panama Canal closure → route via Cape Horn or Suez
-        3. Use route_calculator to compute candidate routes with waypoints
-        4. Use fuel_estimator to compute fuel impact for each route variant
-        5. Store route data in memory_plane (namespace: evidence)
-        6. Return a structured comparison of route options
-
-        **TOOL USAGE:**
-        - google_maps_router — CALL FIRST for real-world route data (actual maritime
-          distances, port coordinates, navigation waypoints from Google Maps).
-          Pass exclusion_zones for any closed straits/conflict areas.
-        - route_calculator — CALL SECOND with the waypoints from google_maps_router,
-          plus whale risk_zones to apply whale-avoidance offsets.
-        - fuel_estimator — CALL THIRD to compute fuel impact for each route variant.
-        Combine both: real route from Google Maps + whale safety from route_calculator.
+        3. Call google_maps_router with origin, destination, and any exclusion_zones.
+           This returns real-world waypoints, distances, and a Google Maps embed URL.
+        4. Call route_calculator with the waypoints from step 3, plus whale risk_zones
+           to apply whale-avoidance offsets to the real route.
+        5. Call fuel_estimator to compute fuel impact for each route variant.
+        6. Store route data in memory_plane (namespace: evidence).
+        7. Return a structured comparison of route options.
 
         **ROUTE TYPES:**
         - "direct" — shortest path, may traverse high-risk zones

@@ -42,6 +42,7 @@ export function DashboardPage() {
     const [localMigrationCorridors, setLocalMigrationCorridors] = useState<Route[]>([]);
     const [localRiskSummary, setLocalRiskSummary] = useState<RiskSummary | null>(null);
     const [localAlerts, setLocalAlerts] = useState<SpeedAlert[]>([]);
+    const [localGoogleMapsEmbedUrl, setLocalGoogleMapsEmbedUrl] = useState("");
     const [isQuerying, setIsQuerying] = useState(false);
     const [statusText, setStatusText] = useState("");
     const [error, setError] = useState<string | null>(null);
@@ -62,7 +63,7 @@ export function DashboardPage() {
     const migrationCorridors = localMigrationCorridors.length > 0 ? localMigrationCorridors : (chatDashboardData?.migrationCorridors ?? []);
     const riskSummary = localRiskSummary ?? chatDashboardData?.riskSummary ?? null;
     const alerts = localAlerts.length > 0 ? localAlerts : (chatDashboardData?.alerts ?? []);
-    const googleMapsEmbedUrl = chatDashboardData?.googleMapsEmbedUrl ?? "";
+    const googleMapsEmbedUrl = localGoogleMapsEmbedUrl || chatDashboardData?.googleMapsEmbedUrl || "";
 
     // Track whether we're showing chat data (for the status banner)
     const hasChatData = chatDashboardData !== null && (
@@ -114,6 +115,7 @@ export function DashboardPage() {
         if (parsed.migrationCorridors.length > 0) setLocalMigrationCorridors(parsed.migrationCorridors);
         if (parsed.riskSummary) setLocalRiskSummary(parsed.riskSummary);
         if (parsed.alerts.length > 0) setLocalAlerts(parsed.alerts);
+        if (parsed.googleMapsEmbedUrl) setLocalGoogleMapsEmbedUrl(parsed.googleMapsEmbedUrl);
     }, []);
 
     /**
@@ -297,8 +299,12 @@ export function DashboardPage() {
 
                 {/* Map tab switcher */}
                 <div className="absolute right-4 top-4 z-10 flex gap-1 rounded-lg bg-background/90 p-1 shadow-lg backdrop-blur-sm"
+                     role="tablist" aria-label="Map view"
                      style={{ borderColor: "var(--border)", border: "1px solid" }}>
                     <button
+                        role="tab"
+                        aria-selected={activeMapTab === "whale-layers"}
+                        aria-controls="panel-whale-layers"
                         onClick={() => setActiveMapTab("whale-layers")}
                         className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                             activeMapTab === "whale-layers"
@@ -309,6 +315,9 @@ export function DashboardPage() {
                         Whale Layers
                     </button>
                     <button
+                        role="tab"
+                        aria-selected={activeMapTab === "google-route"}
+                        aria-controls="panel-google-route"
                         onClick={() => setActiveMapTab("google-route")}
                         className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                             activeMapTab === "google-route"

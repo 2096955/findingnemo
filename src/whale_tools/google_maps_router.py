@@ -65,13 +65,20 @@ def _extract_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
 
-    # Try bare JSON object
-    brace_match = re.search(r"\{[\s\S]*\}", text)
-    if brace_match:
-        try:
-            return json.loads(brace_match.group(0))
-        except json.JSONDecodeError:
-            pass
+    # Try bare JSON object — use brace-depth counting for robustness
+    start = text.find("{")
+    if start != -1:
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start : i + 1])
+                    except json.JSONDecodeError:
+                        break
 
     return None
 
@@ -79,7 +86,11 @@ def _extract_json(text: str) -> dict | None:
 def _to_geojson(waypoints: list[dict], origin: dict, destination: dict) -> dict:
     """Convert waypoint list to a GeoJSON FeatureCollection with LineString."""
     all_points = [origin] + waypoints + [destination]
-    coordinates = [[p["lng"], p["lat"]] for p in all_points]
+    coordinates = [
+        [p["lng"], p["lat"]]
+        for p in all_points
+        if isinstance(p.get("lng"), (int, float)) and isinstance(p.get("lat"), (int, float))
+    ]
 
     return {
         "type": "FeatureCollection",
@@ -118,7 +129,7 @@ def _build_embed_url(
             f"{w['lat']},{w['lng']}" if "lat" in w else w.get("name", "")
             for w in waypoints[:8]  # Embed API supports up to 8 waypoints
         )
-        url += f"&waypoints={quote(wp_str)}"
+        url += f"&waypoints={quote(wp_str, safe='|,')}"
     return url
 
 
@@ -129,6 +140,7 @@ async def compute_maps_route(
     exclusion_zones: list[str] | None = None,
     gemini_api_key: str = "",
     maps_api_key: str = "",
+    model: str = "",
 ) -> dict:
     """Call Gemini with Google Maps grounding to compute a real route."""
     prompt = _build_prompt(origin, destination, waypoints, exclusion_zones)
@@ -163,8 +175,9 @@ async def compute_maps_route(
         return {"error": f"Failed to initialise genai client: {exc}"}
 
     try:
+        resolved_model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=resolved_model,
             contents=prompt,
             config=GenerateContentConfig(
                 tools=[Tool(google_maps=GoogleMaps())],
@@ -231,6 +244,7 @@ class GoogleMapsRouterTool(DynamicTool):
         self._maps_api_key = cfg.get(
             "maps_api_key", os.environ.get("GOOGLE_MAPS_API_KEY", "")
         )
+        self._model = cfg.get("model", "")
 
     @property
     def tool_name(self) -> str:
@@ -289,6 +303,7 @@ class GoogleMapsRouterTool(DynamicTool):
                 exclusion_zones=args.get("exclusion_zones"),
                 gemini_api_key=self._gemini_api_key,
                 maps_api_key=self._maps_api_key,
+                model=self._model,
             )
         except Exception as exc:
             log.exception("[google_maps_router] Unexpected error: %s", exc)

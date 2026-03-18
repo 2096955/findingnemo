@@ -6,6 +6,7 @@ environmental hazards.  Uses DuckDuckGo (no API key) as the primary search
 engine, with an optional Brave Search fallback.
 """
 
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -291,7 +292,8 @@ async def search_web_intelligence(
 
     for query in queries:
         # Priority: Firecrawl (corporate-friendly) → Brave → DuckDuckGo
-        results = _search_firecrawl(query, max_results=3)
+        # Firecrawl + DDG are sync — run in thread to avoid blocking the event loop
+        results = await asyncio.to_thread(_search_firecrawl, query, 3)
         if results:
             engine_used = "firecrawl"
         if not results and brave_api_key:
@@ -299,7 +301,7 @@ async def search_web_intelligence(
             if results:
                 engine_used = "brave"
         if not results:
-            results = _search_ddg(query, max_results=3)
+            results = await asyncio.to_thread(_search_ddg, query, 3)
             if results:
                 engine_used = "duckduckgo"
 
