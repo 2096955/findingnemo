@@ -128,34 +128,36 @@ def _build_queries(
 
 
 # ---------------------------------------------------------------------------
-# Search engines
+# Search engines (priority: Firecrawl → Brave → DuckDuckGo)
 # ---------------------------------------------------------------------------
 
-def _search_ddg(query: str, max_results: int = 5) -> list[dict]:
-    """Search DuckDuckGo.  Returns list of {title, url, snippet}."""
+async def _search_firecrawl(query: str, max_results: int = 5) -> list[dict]:
+    """Search via Firecrawl (corporate-proxy-friendly).  Returns list of
+    {title, url, snippet}.  Requires FIRECRAWL_API_KEY env var."""
+    firecrawl_key = os.environ.get("FIRECRAWL_API_KEY", "")
+    if not firecrawl_key:
+        return []
     try:
-        from duckduckgo_search import DDGS
+        from firecrawl import AsyncFirecrawlApp  # type: ignore[import-untyped]
     except ImportError:
-        log.warning("[web_intelligence] duckduckgo-search not installed")
+        log.warning("[web_intelligence] firecrawl-py not installed")
         return []
 
-    for attempt in range(3):
-        try:
-            with DDGS() as ddgs:
-                raw = list(ddgs.text(query, max_results=max_results))
-            return [
-                {
-                    "title": r.get("title", ""),
-                    "url": r.get("href", r.get("link", "")),
-                    "snippet": r.get("body", r.get("snippet", "")),
-                }
-                for r in raw
-            ]
-        except Exception as exc:
-            log.warning(
-                "[web_intelligence] DDG attempt %d failed: %s", attempt + 1, exc
-            )
-    return []
+    try:
+        client = AsyncFirecrawlApp(api_key=firecrawl_key)
+        raw = await client.search(query, params={"limit": max_results})
+        results = raw if isinstance(raw, list) else raw.get("data", []) if isinstance(raw, dict) else []
+        return [
+            {
+                "title": r.get("title", r.get("metadata", {}).get("title", "")),
+                "url": r.get("url", r.get("sourceURL", "")),
+                "snippet": r.get("description", r.get("markdown", ""))[:300],
+            }
+            for r in results
+        ]
+    except Exception as exc:
+        log.warning("[web_intelligence] Firecrawl search failed: %s", exc)
+        return []
 
 
 async def _search_brave(
@@ -187,6 +189,33 @@ async def _search_brave(
     except Exception as exc:
         log.warning("[web_intelligence] Brave fallback failed: %s", exc)
         return []
+
+
+def _search_ddg(query: str, max_results: int = 5) -> list[dict]:
+    """Search DuckDuckGo (last resort — may be blocked by corporate proxies)."""
+    try:
+        from duckduckgo_search import DDGS
+    except ImportError:
+        log.warning("[web_intelligence] duckduckgo-search not installed")
+        return []
+
+    for attempt in range(3):
+        try:
+            with DDGS() as ddgs:
+                raw = list(ddgs.text(query, max_results=max_results))
+            return [
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("href", r.get("link", "")),
+                    "snippet": r.get("body", r.get("snippet", "")),
+                }
+                for r in raw
+            ]
+        except Exception as exc:
+            log.warning(
+                "[web_intelligence] DDG attempt %d failed: %s", attempt + 1, exc
+            )
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -260,14 +289,18 @@ async def search_web_intelligence(
     engine_used = "none"
 
     for query in queries:
-        # Try DuckDuckGo first
-        results = _search_ddg(query, max_results=3)
+        # Priority: Firecrawl (corporate-friendly) → Brave → DuckDuckGo
+        results = await _search_firecrawl(query, max_results=3)
         if results:
-            engine_used = "duckduckgo"
-        elif brave_api_key:
+            engine_used = "firecrawl"
+        if not results and brave_api_key:
             results = await _search_brave(query, brave_api_key, max_results=3)
             if results:
                 engine_used = "brave"
+        if not results:
+            results = _search_ddg(query, max_results=3)
+            if results:
+                engine_used = "duckduckgo"
 
         for r in results:
             url = r.get("url", "")
