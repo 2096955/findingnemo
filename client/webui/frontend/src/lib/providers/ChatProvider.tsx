@@ -169,6 +169,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     const CHAT_SSE_BASE_DELAY_MS = 1000;
     const CHAT_SSE_MAX_DELAY_MS = 16000;
 
+    // Polling fallback state (used when SSE reconnect is exhausted)
+    const isPollingFallbackRef = useRef(false);
+    const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     // Track isCancelling in ref to access in async callbacks
     const isCancellingRef = useRef(isCancelling);
     useEffect(() => {
@@ -1955,6 +1959,74 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         replayBufferedEventsRef.current = replayBufferedEvents;
     }, [replayBufferedEvents]);
 
+    // Stop any active polling fallback and clear its timer
+    const stopPollingFallback = useCallback(() => {
+        if (isPollingFallbackRef.current) {
+            console.log("[ChatSSE] Stopping polling fallback");
+            isPollingFallbackRef.current = false;
+        }
+        if (pollingTimeoutRef.current) {
+            clearTimeout(pollingTimeoutRef.current);
+            pollingTimeoutRef.current = null;
+        }
+    }, []);
+
+    // Polling fallback: called when SSE reconnect attempts are exhausted.
+    // Polls /events/buffered every 5s and pipes new events through handleSseMessage,
+    // then stops once the task is no longer running.
+    const startPollingFallback = useCallback(
+        async (taskId: string) => {
+            if (isPollingFallbackRef.current) return;
+            isPollingFallbackRef.current = true;
+            console.log(`[ChatSSE] Switching to polling fallback for task ${taskId}`);
+
+            let processedCount = 0;
+
+            const poll = async () => {
+                if (!isPollingFallbackRef.current) return;
+
+                try {
+                    // Fetch buffered events without consuming them so we can re-read on each poll
+                    const response = await api.webui.get(
+                        `/api/v1/tasks/${taskId}/events/buffered?mark_consumed=false`
+                    );
+
+                    if (response.events_buffered && response.events.length > processedCount) {
+                        const newEvents = response.events.slice(processedCount);
+                        console.log(`[ChatSSE] Polling: processing ${newEvents.length} new events`);
+
+                        for (const bufferedEvent of newEvents) {
+                            const ssePayload = bufferedEvent.data;
+                            if (ssePayload?.data) {
+                                const syntheticEvent = { data: ssePayload.data } as MessageEvent;
+                                handleSseMessageRef.current?.(syntheticEvent);
+                            }
+                        }
+                        processedCount = response.events.length;
+                    }
+
+                    // Check task status to detect completion
+                    const status = await api.webui.get(`/api/v1/tasks/${taskId}/status`);
+                    if (!status.is_running) {
+                        console.log(`[ChatSSE] Task ${taskId} complete (polling fallback)`);
+                        stopPollingFallback();
+                        setIsResponding(false);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("[ChatSSE] Polling fallback error:", e);
+                }
+
+                if (isPollingFallbackRef.current) {
+                    pollingTimeoutRef.current = setTimeout(poll, 5000);
+                }
+            };
+
+            await poll();
+        },
+        [stopPollingFallback, setIsResponding]
+    );
+
     // Core implementation - called directly or after confirmation
     const handleNewSessionCore = useCallback(
         async (preserveProjectContext: boolean = false) => {
@@ -2084,6 +2156,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             }
 
             closeCurrentEventSource();
+            stopPollingFallback();
 
             if (isResponding && currentTaskId && selectedAgentName && !isCancelling) {
                 const isBackground = isTaskRunningInBackground(currentTaskId);
@@ -2426,7 +2499,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             clearTimeout(chatSseReconnectionTimeoutRef.current);
             chatSseReconnectionTimeoutRef.current = null;
         }
-    }, []);
+        // If polling fallback was running, stop it — SSE is back
+        stopPollingFallback();
+    }, [stopPollingFallback]);
 
     const handleSseError = useCallback(() => {
         // If actively responding and not finalizing/cancelling, attempt reconnection
@@ -2457,9 +2532,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                 }, delay);
                 return;
             }
-            // Max attempts reached — show error
-            setError({ title: "Connection Failed", error: "Connection lost after multiple retry attempts. Please try again." });
+            // Max attempts reached — switch to polling fallback instead of showing an error
             chatSseReconnectionAttemptsRef.current = 0;
+            closeCurrentEventSource();
+            if (currentTaskId) {
+                latestStatusText.current = "Reconnecting...";
+                startPollingFallback(currentTaskId);
+                return;
+            }
+            setError({ title: "Connection Failed", error: "Connection lost after multiple retry attempts. Please try again." });
         }
 
         // Original cleanup for non-reconnectable cases or max attempts exceeded
@@ -2472,7 +2553,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             latestStatusText.current = null;
         }
         setMessages(prev => prev.filter(msg => !msg.isStatusBubble).map((m, i, arr) => (i === arr.length - 1 && !m.isUser ? { ...m, isComplete: true } : m)));
-    }, [closeCurrentEventSource, isResponding, currentTaskId, setError]);
+    }, [closeCurrentEventSource, isResponding, currentTaskId, setError, startPollingFallback]);
 
     const cleanupUploadedFiles = useCallback(async (uploadedFiles: Array<{ filename: string; sessionId: string }>) => {
         if (uploadedFiles.length === 0) {
