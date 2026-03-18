@@ -151,7 +151,7 @@ async def compute_maps_route(
 
     try:
         from google import genai
-        from google.genai.types import GenerateContentConfig, Tool
+        from google.genai.types import GenerateContentConfig
     except ImportError as exc:
         return {"error": f"google-genai SDK not available: {exc}"}
 
@@ -171,32 +171,17 @@ async def compute_maps_route(
 
     resolved_model = model or os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
-    # Try with Google Maps grounding first; fall back to plain Gemini if unavailable.
-    response = None
+    # Use plain Gemini for route computation (Maps grounding requires additional
+    # API permissions that are not available in this deployment).
     try:
-        from google.genai.types import GoogleMaps
         response = client.models.generate_content(
             model=resolved_model,
             contents=prompt,
-            config=GenerateContentConfig(
-                tools=[Tool(google_maps=GoogleMaps())],
-                temperature=0.1,
-            ),
+            config=GenerateContentConfig(temperature=0.1),
         )
-        log.info("[google_maps_router] Used Google Maps grounding")
     except Exception as exc:
-        log.warning("[google_maps_router] Maps grounding unavailable (%s), falling back to plain Gemini", exc)
-
-    if response is None:
-        try:
-            response = client.models.generate_content(
-                model=resolved_model,
-                contents=prompt,
-                config=GenerateContentConfig(temperature=0.1),
-            )
-        except Exception as exc:
-            log.error("[google_maps_router] Gemini call failed: %s", exc)
-            return {"error": f"Route computation failed: {exc}"}
+        log.error("[google_maps_router] Gemini call failed: %s", exc)
+        return {"error": f"Route computation failed: {exc}"}
 
     # Parse the structured response
     raw_text = response.text if response.text else ""
