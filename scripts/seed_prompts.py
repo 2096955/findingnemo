@@ -10,40 +10,65 @@ import json
 import os
 import sys
 import time
+import traceback
 import urllib.request
 import urllib.error
 from pathlib import Path
 
 
 GATEWAY_PORT = os.environ.get("FASTAPI_PORT", os.environ.get("PORT", "8080"))
-GATEWAY_URL = f"http://localhost:{GATEWAY_PORT}"
+# Use 127.0.0.1 instead of localhost — avoids DNS resolution issues in gVisor
+GATEWAY_URL = f"http://127.0.0.1:{GATEWAY_PORT}"
 SEED_FILE = Path(__file__).parent.parent / "data" / "seed_prompts.json"
 MAX_WAIT_SECONDS = 180
+INITIAL_DELAY = 10  # Give SAM time to start before polling
+
+
+def log(msg: str) -> None:
+    """Print with flush to ensure output appears in container logs."""
+    print(f"[seed_prompts] {msg}", flush=True)
 
 
 def wait_for_gateway() -> bool:
-    """Poll the gateway until it responds or we time out."""
+    """Poll the gateway until the prompts endpoint responds or we time out."""
+    log(f"Waiting up to {MAX_WAIT_SECONDS}s for gateway at {GATEWAY_URL}")
+    log(f"Sleeping {INITIAL_DELAY}s before first poll...")
+    time.sleep(INITIAL_DELAY)
+
     deadline = time.monotonic() + MAX_WAIT_SECONDS
+    attempt = 0
     while time.monotonic() < deadline:
+        attempt += 1
         try:
-            with urllib.request.urlopen(f"{GATEWAY_URL}/api/v1/prompts/groups/all", timeout=3) as r:
+            with urllib.request.urlopen(
+                f"{GATEWAY_URL}/api/v1/prompts/groups/all", timeout=5
+            ) as r:
                 if r.status == 200:
+                    log(f"Gateway ready after {attempt} attempts")
                     return True
-        except Exception:
-            pass
+        except urllib.error.URLError as e:
+            if attempt <= 3 or attempt % 10 == 0:
+                log(f"  attempt {attempt}: {e.reason}")
+        except Exception as e:
+            if attempt <= 3 or attempt % 10 == 0:
+                log(f"  attempt {attempt}: {type(e).__name__}: {e}")
         time.sleep(2)
+
+    log(f"Gateway not ready after {MAX_WAIT_SECONDS}s ({attempt} attempts)")
     return False
 
 
 def get_existing_names() -> set:
     """Return set of existing prompt group names."""
     try:
-        with urllib.request.urlopen(f"{GATEWAY_URL}/api/v1/prompts/groups/all", timeout=5) as r:
+        with urllib.request.urlopen(
+            f"{GATEWAY_URL}/api/v1/prompts/groups/all", timeout=5
+        ) as r:
             data = json.loads(r.read())
             groups = data if isinstance(data, list) else data.get("groups", [])
             return {g.get("name", "") for g in groups}
     except Exception as e:
-        print(f"[seed_prompts] Warning: could not fetch existing prompts: {e}")
+        log(f"Warning: could not fetch existing prompts: {e}")
         return set()
 
 
@@ -60,43 +85,64 @@ def create_prompt(prompt: dict) -> bool:
         with urllib.request.urlopen(req, timeout=10) as r:
             return r.status in (200, 201)
     except urllib.error.HTTPError as e:
-        print(f"[seed_prompts] HTTP {e.code} creating '{prompt['name']}': {e.read().decode()[:200]}")
+        body = ""
+        try:
+            body = e.read().decode()[:200]
+        except Exception:
+            pass
+        log(f"HTTP {e.code} creating '{prompt['name']}': {body}")
         return False
     except Exception as e:
-        print(f"[seed_prompts] Error creating '{prompt['name']}': {e}")
+        log(f"Error creating '{prompt['name']}': {e}")
         return False
 
 
 def main():
-    print("[seed_prompts] Waiting for gateway to be ready...")
-    if not wait_for_gateway():
-        print("[seed_prompts] Gateway not ready after timeout — skipping seed")
-        sys.exit(0)
+    log("Starting...")
+    log(f"GATEWAY_URL={GATEWAY_URL}")
+    log(f"SEED_FILE={SEED_FILE}")
+    log(f"SEED_FILE exists={SEED_FILE.exists()}")
 
     if not SEED_FILE.exists():
-        print(f"[seed_prompts] Seed file not found: {SEED_FILE} — skipping")
-        sys.exit(0)
+        log(f"Seed file not found — skipping")
+        return
+
+    if not wait_for_gateway():
+        log("Gateway not ready — skipping seed")
+        return
 
     prompts = json.loads(SEED_FILE.read_text())
+    log(f"Loaded {len(prompts)} prompts from seed file")
+
     existing = get_existing_names()
-    print(f"[seed_prompts] Found {len(existing)} existing prompt(s)")
+    log(f"Found {len(existing)} existing prompt(s)")
 
     created = 0
     skipped = 0
+    failed = 0
     for prompt in prompts:
         name = prompt.get("name", "")
         if name in existing:
-            print(f"[seed_prompts]   SKIP  {name}")
+            log(f"  SKIP  {name}")
             skipped += 1
         else:
             if create_prompt(prompt):
-                print(f"[seed_prompts]   OK    {name}")
+                log(f"  OK    {name}")
                 created += 1
             else:
-                print(f"[seed_prompts]   FAIL  {name}")
+                log(f"  FAIL  {name}")
+                failed += 1
 
-    print(f"[seed_prompts] Done — created {created}, skipped {skipped}")
+    log(f"Done — created {created}, skipped {skipped}, failed {failed}")
+
+    # Verify by re-fetching
+    final = get_existing_names()
+    log(f"Verification: {len(final)} prompts now in gateway")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        log(f"FATAL unhandled exception:\n{traceback.format_exc()}")
+        sys.exit(1)

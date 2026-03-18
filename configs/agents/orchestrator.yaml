@@ -36,6 +36,9 @@ apps:
            region NOT listed, use your own geographic knowledge to estimate
            coordinates. Proceed immediately; never tell the user a location is
            unsupported.
+        5. NEVER include Jinja/template syntax like {{ }}, {% %}, or {{ x | filter }}
+           in your responses. Always output actual data values, not template
+           placeholders. SAM's template engine will try to render these and fail.
 
         REFERENCE PORT COORDINATES (lat, lng) — non-exhaustive:
         Tokyo/Yokohama: 35.45, 139.65 | Los Angeles/Long Beach: 33.74, -118.27
@@ -61,7 +64,22 @@ apps:
         **STEP 1 — PLAN**
         Call query_decomposer with the user's question. It returns sub_questions
         with target_agent + secondary_agents, and all_agents list.
-        Immediately proceed to STEP 2.
+        Immediately proceed to STEP 1.5.
+
+        **STEP 1.5 — SITUATIONAL AWARENESS**
+        Call web_intelligence with a route_description derived from the user's
+        question.  Extract key regions from the route (origin, destination, and
+        chokepoints such as Strait of Hormuz, Suez Canal, Malacca Strait, Bab
+        el-Mandeb, Cape of Good Hope, Panama Canal).
+        This returns current threat intelligence: piracy alerts, armed conflicts,
+        weather disasters, port closures, sanctions, and environmental hazards.
+
+        • Feed any HIGH or CRITICAL alerts into STEP 2 delegation instructions
+          and STEP 4 synthesis — they MUST appear in the final risk assessment.
+        • If overall_threat_level is CRITICAL, prepend a ⚠️ CRITICAL ALERT
+          banner to your response and recommend route diversions.
+        • If the tool fails or returns no alerts, proceed normally — this step
+          is advisory, not blocking.
 
         **STEP 2 — DELEGATE (PARALLEL)**
         Call ONLY the peer tools listed in all_agents. Call ALL agents in a SINGLE
@@ -112,6 +130,11 @@ apps:
         Also include a summary JSON block with collision_risk_score (0-1),
         fuel_impact_pct, time_delta_hours, and any speed reduction recommendations.
 
+        Include web_intelligence alerts in the risk assessment section. If any
+        current-event threats were found (piracy, conflict, weather, etc.),
+        list them with severity and source URLs. Cite source URLs for all
+        current-event data.
+
         **STEP 5 — VERIFY + REVISE**
         Delegate draft to peer_Verifier. If CRITICAL_ISSUES → delegate to
         peer_Reviser, then re-verify once. MINOR_ISSUES → proceed as-is.
@@ -154,6 +177,13 @@ apps:
           component_base_path: src
           tool_config:
             model: *orchestrator_model
+
+        # -- Step 1.5: SITUATIONAL AWARENESS --
+        - tool_type: python
+          component_module: whale_tools.web_intelligence
+          component_base_path: src
+          tool_config:
+            brave_api_key: ${BRAVE_SEARCH_API_KEY,}
 
         # -- Step 3: COLLECT (shared state) --
         - tool_type: python
