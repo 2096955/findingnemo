@@ -8,6 +8,7 @@ spec:
       annotations:
         run.googleapis.com/startup-cpu-boost: "true"
         autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/sessionAffinity: "true"
     spec:
       containerConcurrency: 80
       timeoutSeconds: 600
