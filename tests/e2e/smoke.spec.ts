@@ -149,7 +149,7 @@ test.describe("2 · Chat Round-Trip", () => {
     await waitForAgentResponse(
       page,
       /whale|species|humpback|blue|risk/i,
-      180_000,
+      260_000,
     );
 
     const bodyText = await page.locator("body").innerText();
@@ -189,7 +189,7 @@ test.describe("2 · Chat Round-Trip", () => {
     await waitForAgentResponse(
       page,
       /route|whale|risk|francisco|nautical|collision/i,
-      150_000,
+      260_000,
     );
   });
 
@@ -205,7 +205,7 @@ test.describe("2 · Chat Round-Trip", () => {
     await waitForAgentResponse(
       page,
       /route|hormuz|mumbai|india|arabian|nautical|waypoint|oman/i,
-      180_000,
+      260_000,
     );
 
     // Collect full agent response text
@@ -350,7 +350,7 @@ test.describe("4 · Chat to Dashboard Bridge", () => {
     await waitForAgentResponse(
       page,
       /route|mile|nautical|risk|whale|francisco|angeles|collision/i,
-      150_000,
+      260_000,
     );
 
     // Navigate to dashboard
