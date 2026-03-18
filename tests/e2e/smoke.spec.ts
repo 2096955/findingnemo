@@ -354,13 +354,13 @@ test.describe("6 · Streaming UX", () => {
       timeout: 10_000,
     });
 
-    // Fill minimal route form
+    // Fill minimal route form — use SF→LA (same as dashboard form test, ~1.2m)
     await page
       .locator('input[placeholder="e.g. San Francisco"]')
-      .fill("Tokyo");
+      .fill("San Francisco");
     await page
       .locator('input[placeholder="e.g. Los Angeles"]')
-      .fill("Seattle");
+      .fill("Los Angeles");
 
     await page.getByRole("button", { name: "Plan Route" }).click();
 
