@@ -151,11 +151,7 @@ async def compute_maps_route(
 
     try:
         from google import genai
-        from google.genai.types import (
-            GenerateContentConfig,
-            GoogleMaps,
-            Tool,
-        )
+        from google.genai.types import GenerateContentConfig
     except ImportError as exc:
         return {"error": f"google-genai SDK not available: {exc}"}
 
@@ -165,7 +161,6 @@ async def compute_maps_route(
         if gemini_api_key:
             client = genai.Client(api_key=gemini_api_key)
         else:
-            # Auto-discover Vertex AI credentials
             client = genai.Client(
                 vertexai=True,
                 project=os.environ.get("GOOGLE_CLOUD_PROJECT", "gbg-neuro"),
@@ -174,8 +169,12 @@ async def compute_maps_route(
     except Exception as exc:
         return {"error": f"Failed to initialise genai client: {exc}"}
 
+    resolved_model = model or os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+
+    # Try with Google Maps grounding first; fall back to plain Gemini if unavailable.
+    response = None
     try:
-        resolved_model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        from google.genai.types import GoogleMaps, Tool
         response = client.models.generate_content(
             model=resolved_model,
             contents=prompt,
@@ -184,9 +183,20 @@ async def compute_maps_route(
                 temperature=0.1,
             ),
         )
+        log.info("[google_maps_router] Used Google Maps grounding")
     except Exception as exc:
-        log.error("[google_maps_router] Gemini + Maps call failed: %s", exc)
-        return {"error": f"Google Maps routing failed: {exc}"}
+        log.warning("[google_maps_router] Maps grounding unavailable (%s), falling back to plain Gemini", exc)
+
+    if response is None:
+        try:
+            response = client.models.generate_content(
+                model=resolved_model,
+                contents=prompt,
+                config=GenerateContentConfig(temperature=0.1),
+            )
+        except Exception as exc:
+            log.error("[google_maps_router] Gemini call failed: %s", exc)
+            return {"error": f"Route computation failed: {exc}"}
 
     # Parse the structured response
     raw_text = response.text if response.text else ""
