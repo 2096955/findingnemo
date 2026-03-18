@@ -5,28 +5,28 @@ export const MODEL_OPTIONS = [
 ] as const;
 
 export const MODE_OPTIONS = [
-  { value: "research", label: "Route Planning", shortLabel: "Routes", agentBase: "OrchestratorAgent" },
-  { value: "triage", label: "Risk Assessment", shortLabel: "Risk", agentBase: "TriageIntakeAgent" },
+  { value: "research", label: "Route Planning", shortLabel: "Routes", agentBase: "WhaleRouteCoordinator" },
+  { value: "triage", label: "Risk Assessment", shortLabel: "Risk", agentBase: "RiskAssessor" },
 ] as const;
 
 export type ModelValue = (typeof MODEL_OPTIONS)[number]["value"];
 export type ModeValue = (typeof MODE_OPTIONS)[number]["value"];
 
-export function resolveAgentName(model: ModelValue, mode: ModeValue): string {
-  const modelOpt = MODEL_OPTIONS.find((m) => m.value === model);
+export function resolveAgentName(_model: ModelValue, mode: ModeValue): string {
   const modeOpt = MODE_OPTIONS.find((m) => m.value === mode);
-  if (!modelOpt || !modeOpt) return "OrchestratorAgent";
-  return modeOpt.agentBase + modelOpt.suffix;
+  if (!modeOpt) return "WhaleRouteCoordinator";
+  // All models use the same agent — the model selection is passed as metadata,
+  // not encoded in the agent name. No suffix needed.
+  return modeOpt.agentBase;
 }
 
-export function inferModelFromAgentName(agentName: string): ModelValue {
-  if (agentName.endsWith("Opus")) return "opus";
-  if (agentName.endsWith("Pro")) return "pro";
+export function inferModelFromAgentName(_agentName: string): ModelValue {
+  // All models share the same agent name — model is stored separately.
+  // Default to flash; the actual model selection is in the session/metadata.
   return "flash";
 }
 
 export function inferModeFromAgentName(agentName: string): ModeValue {
-  const baseName = agentName.replace(/Pro$|Opus$/, "");
-  if (baseName === "TriageIntakeAgent" || baseName === "TriageOrchestratorAgent") return "triage";
+  if (agentName === "RiskAssessor") return "triage";
   return "research";
 }

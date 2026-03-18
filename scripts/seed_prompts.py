@@ -16,7 +16,7 @@ from pathlib import Path
 
 GATEWAY_URL = "http://localhost:8080"
 SEED_FILE = Path(__file__).parent.parent / "data" / "seed_prompts.json"
-MAX_WAIT_SECONDS = 60
+MAX_WAIT_SECONDS = 180
 
 
 def wait_for_gateway() -> bool:

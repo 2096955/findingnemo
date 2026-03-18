@@ -2957,7 +2957,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             // Priority order for agent selection:
             // 1. URL parameter agent (?agent=AgentName)
             // 2. Project's default agent (if in project context)
-            // 3. OrchestratorAgent (fallback)
+            // 3. WhaleRouteCoordinator (fallback)
             // 4. First available agent
             let selectedAgent = agents[0];
 
@@ -2984,17 +2984,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
                         selectedAgent = projectDefaultAgent;
                         console.log(`Using project default agent: ${selectedAgent.name}`);
                     } else {
-                        console.warn(`Project default agent "${activeProject.defaultAgentId}" not found, falling back to OrchestratorAgent`);
-                        selectedAgent = agents.find(agent => agent.name === "OrchestratorAgent") ?? agents[0];
+                        console.warn(`Project default agent "${activeProject.defaultAgentId}" not found, falling back to WhaleRouteCoordinator`);
+                        selectedAgent = agents.find(agent => agent.name === "WhaleRouteCoordinator") ?? agents[0];
                     }
                 } else {
                     // Respect model selector localStorage preference on refresh
-                    const persistedModel = localStorage.getItem("medexpert-model");
-                    const persistedMode = localStorage.getItem("medexpert-mode");
+                    const persistedModel = localStorage.getItem("whale-agent-model");
+                    const persistedMode = localStorage.getItem("whale-agent-mode");
                     const preferredName = (persistedModel || persistedMode)
                         ? resolveAgentName((persistedModel || "flash") as any, (persistedMode || "research") as any)
-                        : "OrchestratorAgent";
-                    selectedAgent = agents.find(agent => agent.name === preferredName) ?? agents.find(agent => agent.name === "OrchestratorAgent") ?? agents[0];
+                        : "WhaleRouteCoordinator";
+                    selectedAgent = agents.find(agent => agent.name === preferredName) ?? agents.find(agent => agent.name === "WhaleRouteCoordinator") ?? agents[0];
                 }
             }
 

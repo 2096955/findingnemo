@@ -35,9 +35,11 @@ apps:
         1. Receive region/season/route query from the Orchestrator
         2. Use IUCN MCP tools to retrieve conservation status and range maps
         3. Use GBIF MCP tools for species occurrence records in the area
-        4. Cross-reference with seasonal presence patterns
-        5. Store species data in memory_plane (namespace: evidence)
-        6. Return structured species assessment with conservation priorities
+        4. AGGREGATE the GBIF results: count occurrences per unique species name.
+           Do NOT enumerate individual records — summarise into unique species entries.
+        5. Cross-reference with seasonal presence patterns
+        6. Store species data in memory_plane (namespace: evidence)
+        7. Return structured species assessment with conservation priorities
 
         **CONSERVATION PRIORITIES:**
         - Critically Endangered: North Atlantic right whale, North Pacific right whale
@@ -53,7 +55,11 @@ apps:
         - Night-time surfacing patterns
 
         **RESPONSE FORMAT:**
-        Return ONLY a raw JSON object — no markdown fences, no prose outside the JSON.
+        Return ONLY a raw JSON object — no markdown fences, no prose, no bullet lists,
+        no intermediate output outside the JSON. Your entire response must start with
+        `{` and end with `}`. Never output individual GBIF occurrence records.
+
+        Required schema — do not rename or omit keys:
         {"findings": [
            "3 ESA-listed species likely present: blue, fin, humpback...",
            "North Pacific right whale sightings rare but critical..."
