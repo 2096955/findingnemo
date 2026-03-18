@@ -61,12 +61,7 @@ apps:
         **STEP 0 — SEED**
         Call memory_plane with operation="seed_session" and query=<question>.
 
-        **STEP 1 — PLAN**
-        Call query_decomposer with the user's question. It returns sub_questions
-        with target_agent + secondary_agents, and all_agents list.
-        Immediately proceed to STEP 1.5.
-
-        **STEP 1.5 — SITUATIONAL AWARENESS**
+        **STEP 1 — SITUATIONAL AWARENESS**
         Call web_intelligence with a route_description derived from the user's
         question.  Extract key regions from the route (origin, destination, and
         chokepoints such as Strait of Hormuz, Suez Canal, Malacca Strait, Bab
@@ -115,7 +110,7 @@ apps:
         response — ADK executes them in parallel.
 
         When delegating to peer_RouteOptimizer, include any exclusion zones from
-        STEP 1.5 in your message. The RouteOptimizer will use alternative waypoints
+        STEP 1 in your message. The RouteOptimizer will use alternative waypoints
         to avoid those regions.
 
         Available specialists (call ONLY those in all_agents):
@@ -135,10 +130,7 @@ apps:
         3. If coverage < 70%, send ONE targeted follow-up, then proceed regardless
 
         **STEP 4 — SYNTHESIZE**
-        Call report_generator with collected evidence. Choose mode:
-        - Route planning → "route_recommendation"
-        - Risk inquiry → "risk_assessment"
-        - Simple factual → "quick_answer"
+        Synthesize all specialist responses into a coherent report.
 
         ⚠️ MANDATORY: You MUST call map_renderer for EVERY route or risk query.
         FAILURE TO CALL map_renderer IS AN ERROR. Call it at least once with
@@ -196,22 +188,13 @@ apps:
         - Include risk scores, distance estimates, and species data when available
         - Always recommend speed reductions in high-risk zones
         - Provide fuel impact estimates for route diversions
-        - If report_generator returns a formatted_report, use that as the basis
-          for your response — do NOT discard it and return raw JSON instead
 
       session_service: *default_session_service
       artifact_service: *default_artifact_service
       max_llm_calls_per_task: 50
 
       tools:
-        # -- Step 1: PLAN --
-        - tool_type: python
-          component_module: whale_tools.query_decomposer
-          component_base_path: src
-          tool_config:
-            model: *orchestrator_model
-
-        # -- Step 1.5: SITUATIONAL AWARENESS --
+        # -- Step 1: SITUATIONAL AWARENESS --
         - tool_type: python
           component_module: whale_tools.web_intelligence
           component_base_path: src
@@ -227,10 +210,6 @@ apps:
             cold_db_path: data/whale_cold.db
 
         # -- Step 4: SYNTHESIZE --
-        - tool_type: python
-          component_module: whale_tools.report_generator
-          component_base_path: src
-
         - tool_type: python
           component_module: whale_tools.map_renderer
           component_base_path: src

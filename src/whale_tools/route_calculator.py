@@ -19,6 +19,64 @@ log = logging.getLogger(__name__)
 EARTH_RADIUS_KM = 6371.0
 KM_PER_NM = 1.852
 
+# ---------------------------------------------------------------------------
+# Fuel estimation (inlined from fuel_estimator.py)
+# ---------------------------------------------------------------------------
+
+# Approximate fuel consumption rates (liters per nautical mile) by speed
+# Based on typical medium-size cargo vessel (~30,000 DWT)
+_FUEL_RATE_PER_NM = {
+    10: 8.0,
+    12: 10.5,
+    14: 13.5,
+    16: 17.0,
+    18: 21.0,
+    20: 26.0,
+    22: 32.0,
+}
+
+
+def _interpolate_fuel_rate(speed_knots: float) -> float:
+    """Interpolate fuel consumption rate for a given speed."""
+    speeds = sorted(_FUEL_RATE_PER_NM.keys())
+    if speed_knots <= speeds[0]:
+        return _FUEL_RATE_PER_NM[speeds[0]]
+    if speed_knots >= speeds[-1]:
+        return _FUEL_RATE_PER_NM[speeds[-1]]
+    for i in range(len(speeds) - 1):
+        if speeds[i] <= speed_knots <= speeds[i + 1]:
+            ratio = (speed_knots - speeds[i]) / (speeds[i + 1] - speeds[i])
+            r1 = _FUEL_RATE_PER_NM[speeds[i]]
+            r2 = _FUEL_RATE_PER_NM[speeds[i + 1]]
+            return r1 + ratio * (r2 - r1)
+    return _FUEL_RATE_PER_NM[speeds[-1]]
+
+
+def compute_fuel_impact(
+    route_distance_nm: float,
+    original_distance_nm: float,
+    speed_knots: float,
+) -> dict:
+    """Compute fuel impact of a route diversion."""
+    extra_distance = route_distance_nm - original_distance_nm
+    fuel_rate = _interpolate_fuel_rate(speed_knots)
+
+    fuel_impact_pct = round(
+        ((route_distance_nm / max(original_distance_nm, 0.01)) - 1.0) * 100, 2
+    )
+    extra_fuel_liters = round(extra_distance * fuel_rate, 2)
+    time_delta_hours = round(extra_distance / max(speed_knots, 0.01), 2)
+
+    return {
+        "fuel_impact_pct": fuel_impact_pct,
+        "extra_fuel_liters": max(0.0, extra_fuel_liters),
+        "time_delta_hours": max(0.0, time_delta_hours),
+        "extra_distance_nm": round(extra_distance, 2),
+        "fuel_rate_liters_per_nm": round(fuel_rate, 2),
+        "total_fuel_liters": round(route_distance_nm * fuel_rate, 2),
+        "original_fuel_liters": round(original_distance_nm * fuel_rate, 2),
+    }
+
 
 def _haversine_nm(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """Compute great-circle distance in nautical miles."""
@@ -156,11 +214,16 @@ def _build_result(waypoints: list[dict], route_distance_nm: float, direct_distan
         ],
     }
 
+    # Compute detailed fuel impact (cargo vessel at 14 knots)
+    fuel_data = compute_fuel_impact(route_distance_nm, direct_distance_nm, 14.0)
+
     return {
         "waypoints": waypoints,
         "total_distance_nm": round(route_distance_nm, 2),
         "direct_distance_nm": round(direct_distance_nm, 2),
         "estimated_fuel_impact_pct": fuel_impact_pct,
+        "fuel_liters": fuel_data["total_fuel_liters"],
+        "time_hours": round(route_distance_nm / 14.0, 2),
         "geojson": geojson,
     }
 

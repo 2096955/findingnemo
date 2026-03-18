@@ -290,21 +290,32 @@ async def search_web_intelligence(
     seen_urls: set[str] = set()
     engine_used = "none"
 
-    for query in queries:
+    async def _search_one_query(query: str, brave_api_key: str) -> tuple[str, list[dict]]:
+        """Run the Firecrawl → Brave → DDG cascade for a single query.
+
+        Returns (engine_name, results_list).
+        """
         # Priority: Firecrawl (corporate-friendly) → Brave → DuckDuckGo
         # Firecrawl + DDG are sync — run in thread to avoid blocking the event loop
         results = await asyncio.to_thread(_search_firecrawl, query, 3)
         if results:
-            engine_used = "firecrawl"
-        if not results and brave_api_key:
+            return ("firecrawl", results)
+        if brave_api_key:
             results = await _search_brave(query, brave_api_key, max_results=3)
             if results:
-                engine_used = "brave"
-        if not results:
-            results = await asyncio.to_thread(_search_ddg, query, 3)
-            if results:
-                engine_used = "duckduckgo"
+                return ("brave", results)
+        results = await asyncio.to_thread(_search_ddg, query, 3)
+        if results:
+            return ("duckduckgo", results)
+        return ("none", [])
 
+    batch = await asyncio.gather(
+        *[_search_one_query(q, brave_api_key) for q in queries]
+    )
+
+    for eng, results in batch:
+        if engine_used == "none" and eng != "none":
+            engine_used = eng
         for r in results:
             url = r.get("url", "")
             if url and url not in seen_urls:

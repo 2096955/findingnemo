@@ -51,10 +51,10 @@ apps:
         3. Call google_maps_router with origin, destination, and any exclusion_zones.
            This returns real-world waypoints, distances, and a Google Maps embed URL.
         4. Call route_calculator with the waypoints from step 3, plus whale risk_zones
-           to apply whale-avoidance offsets to the real route.
-        5. Call fuel_estimator to compute fuel impact for each route variant.
-        6. Store route data in memory_plane (namespace: evidence).
-        7. Return a structured comparison of route options.
+           to apply whale-avoidance offsets to the real route.  route_calculator now
+           includes fuel data (fuel_liters, time_hours) in its output.
+        5. Store route data in memory_plane (namespace: evidence).
+        6. Return a structured comparison of route options.
 
         **ROUTE TYPES:**
         - "direct" — shortest path, may traverse high-risk zones
@@ -82,10 +82,6 @@ apps:
       tools:
         - tool_type: python
           component_module: whale_tools.route_calculator
-          component_base_path: src
-
-        - tool_type: python
-          component_module: whale_tools.fuel_estimator
           component_base_path: src
 
         - tool_type: python
