@@ -158,9 +158,17 @@ apps:
         list them with severity and source URLs. Cite source URLs for all
         current-event data.
 
-        **STEP 5 — VERIFY + REVISE**
-        Delegate draft to peer_Verifier. If CRITICAL_ISSUES → delegate to
-        peer_Reviser, then re-verify once. MINOR_ISSUES → proceed as-is.
+        **STEP 5 — VERIFY + REVISE (CONDITIONAL)**
+        After synthesis, assess your confidence in the response on a 0-1 scale:
+        - All specialists responded with consistent, source-backed data → HIGH (0.8+)
+        - Well-known route (ports in reference table), no MCP failures → HIGH (0.8+)
+        - Novel region, conflicting specialist data, MCP failures, chokepoint
+          closures, or missing coverage → LOW (< 0.8)
+
+        If confidence >= 0.8: SKIP verification. Proceed directly to Step 6.
+        If confidence < 0.8: Delegate draft to peer_Verifier.
+          If CRITICAL_ISSUES → delegate to peer_Reviser, then re-verify once.
+          MINOR_ISSUES → proceed as-is.
 
         **STEP 6 — PERSIST**
         Call memory_plane with operation="flush_cold", query=<original question>,
