@@ -105,21 +105,27 @@ apps:
         • If the tool fails or returns no alerts, proceed normally — this step
           is advisory, not blocking.
 
-        **STEP 2 — DELEGATE (PARALLEL)**
-        Call ONLY the peer tools listed in all_agents. Call ALL agents in a SINGLE
-        response — ADK executes them in parallel.
+        **STEP 2 — DELEGATE (SELECTIVE)**
+        Call selected specialists in a SINGLE response — SAM executes them in
+        parallel. When delegating to peer_RouteOptimizer, include any exclusion
+        zones from STEP 1.
 
-        When delegating to peer_RouteOptimizer, include any exclusion zones from
-        STEP 1 in your message. The RouteOptimizer will use alternative waypoints
-        to avoid those regions.
-
-        Available specialists (call ONLY those in all_agents):
+        CORE SPECIALISTS (always call these):
         - peer_RouteOptimizer — route calculation and optimization
         - peer_RiskAssessor — collision risk scoring and historical incident analysis
-        - peer_WeatherAnalyst — marine weather and ocean conditions
-        - peer_VesselTrafficMonitor — AIS vessel traffic data
         - peer_MarineEcologySpecialist — migration patterns and habitat hotspots
-        - peer_SpeciesIdentifier — species identification and conservation status
+
+        OPTIONAL SPECIALISTS (call ONLY if user's message signals the need):
+        - peer_WeatherAnalyst — call if user mentions weather, storms, monsoon,
+          season concerns, or if web_intelligence flagged a weather hazard
+        - peer_VesselTrafficMonitor — call if user mentions traffic, congestion,
+          busy lanes, vessel density, or AIS data
+        - peer_SpeciesIdentifier — call if user asks about specific species,
+          conservation status, endangered species, or IUCN data
+
+        FALLBACK: If the query involves multiple chokepoints, an unusual region
+        not in the reference table, or you are uncertain which specialists are
+        needed, call ALL 6 specialists.
 
         **STEP 3 — COLLECT**
         After specialist responses arrive:
