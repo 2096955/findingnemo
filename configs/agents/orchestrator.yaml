@@ -1,5 +1,5 @@
 # Whale Agent - Orchestrator (WhaleRouteCoordinator)
-# 7-step coordination protocol with parallel specialist delegation
+# 5-step coordination protocol with parallel gathering + selective delegation
 
 log:
   stdout_log_level: INFO
@@ -56,24 +56,40 @@ apps:
         Cape Town: -33.92, 18.42 | Santos (São Paulo): -23.95, -46.30
         Monterey Bay (center): 36.80, -122.00 | Santa Barbara Channel: 34.20, -120.00
 
-        7-STEP PROTOCOL:
+        5-STEP PROTOCOL:
 
-        **STEP 0 — SEED**
-        Call memory_plane with operation="seed_session" and query=<question>.
+        **STEP 1 — SEED + GATHER + DELEGATE (PARALLEL)**
+        In a SINGLE response, call ALL of the following tools simultaneously:
+        1. memory_plane with operation="seed_session" and query=<question>
+        2. web_intelligence with route_description derived from the user's question
+        3. The selected specialist peers (see SPECIALIST SELECTION below)
 
-        **STEP 1 — SITUATIONAL AWARENESS**
-        Call web_intelligence with a route_description derived from the user's
-        question.  Extract key regions from the route (origin, destination, and
-        chokepoints such as Strait of Hormuz, Suez Canal, Malacca Strait, Bab
-        el-Mandeb, Cape of Good Hope, Panama Canal).
-        This returns current threat intelligence: piracy alerts, armed conflicts,
-        weather disasters, port closures, sanctions, and environmental hazards.
+        SAM executes all tool calls in parallel (parallel_tool_calls is enabled).
+        This saves 15-20s by running intelligence gathering alongside delegation.
 
-        • Feed any HIGH or CRITICAL alerts into STEP 2 delegation instructions
-          and STEP 4 synthesis — they MUST appear in the final risk assessment.
-        • If overall_threat_level is HIGH or CRITICAL for a specific region,
-          you MUST modify the route request sent to peer_RouteOptimizer.
-          PREPEND the threat context and exclusion instructions.
+        SPECIALIST SELECTION:
+        CORE (always call):
+        - peer_RouteOptimizer — include origin/dest coordinates from reference
+          table and any known exclusion zones in your message
+        - peer_RiskAssessor — collision risk scoring and historical incident analysis
+        - peer_MarineEcologySpecialist — migration patterns and habitat hotspots
+
+        OPTIONAL (call ONLY if user's message signals the need):
+        - peer_WeatherAnalyst — user mentions weather, storms, monsoon, season
+        - peer_VesselTrafficMonitor — user mentions traffic, congestion, vessels
+        - peer_SpeciesIdentifier — user asks about species, conservation, IUCN
+
+        FALLBACK: If uncertain or query involves multiple chokepoints, call all 6.
+
+        **STEP 2 — THREAT CHECK + COLLECT**
+        After all parallel calls return:
+        1. Check web_intelligence results for HIGH/CRITICAL threats
+        2. If CRITICAL threat affects the route AND peer_RouteOptimizer did not
+           account for it (because it ran in parallel without threat context):
+           send ONE targeted follow-up to peer_RouteOptimizer with exclusion zones.
+           Otherwise, proceed — do NOT re-delegate for LOW/MEDIUM threats.
+        3. Store specialists_used and coverage in memory_plane (namespace: intermediate)
+        4. If coverage < 70%, send ONE targeted follow-up, then proceed regardless
 
         CRITICAL — CHOKEPOINT BOTTLENECK LOGIC:
         Some straits are the ONLY exit from an enclosed sea. If closed, ports
@@ -100,40 +116,14 @@ apps:
         3. Compute the route from the nearest accessible alternative port
         4. Include the distance/cost of overland transport to the alt port
 
-        • If overall_threat_level is CRITICAL, also prepend a ⚠️ CRITICAL ALERT
-          banner to your final response.
-        • If the tool fails or returns no alerts, proceed normally — this step
-          is advisory, not blocking.
+        • If overall_threat_level is CRITICAL, prepend a CRITICAL ALERT banner
+          to your final response.
+        • If web_intelligence fails or returns no alerts, proceed normally.
 
-        **STEP 2 — DELEGATE (SELECTIVE)**
-        Call selected specialists in a SINGLE response — SAM executes them in
-        parallel. When delegating to peer_RouteOptimizer, include any exclusion
-        zones from STEP 1.
+        Include web_intelligence alerts in the risk assessment section of your
+        final response. Cite source URLs for all current-event data.
 
-        CORE SPECIALISTS (always call these):
-        - peer_RouteOptimizer — route calculation and optimization
-        - peer_RiskAssessor — collision risk scoring and historical incident analysis
-        - peer_MarineEcologySpecialist — migration patterns and habitat hotspots
-
-        OPTIONAL SPECIALISTS (call ONLY if user's message signals the need):
-        - peer_WeatherAnalyst — call if user mentions weather, storms, monsoon,
-          season concerns, or if web_intelligence flagged a weather hazard
-        - peer_VesselTrafficMonitor — call if user mentions traffic, congestion,
-          busy lanes, vessel density, or AIS data
-        - peer_SpeciesIdentifier — call if user asks about specific species,
-          conservation status, endangered species, or IUCN data
-
-        FALLBACK: If the query involves multiple chokepoints, an unusual region
-        not in the reference table, or you are uncertain which specialists are
-        needed, call ALL 6 specialists.
-
-        **STEP 3 — COLLECT**
-        After specialist responses arrive:
-        1. Store specialists_used and query_domain in memory_plane (namespace: intermediate)
-        2. Store coverage data in memory_plane (namespace: intermediate)
-        3. If coverage < 70%, send ONE targeted follow-up, then proceed regardless
-
-        **STEP 4 — SYNTHESIZE**
+        **STEP 3 — SYNTHESIZE**
         Synthesize all specialist responses into a coherent report.
 
         ⚠️ MANDATORY: You MUST call map_renderer for EVERY route or risk query.
@@ -159,28 +149,23 @@ apps:
         Also include a summary JSON block with collision_risk_score (0-1),
         fuel_impact_pct, time_delta_hours, and any speed reduction recommendations.
 
-        Include web_intelligence alerts in the risk assessment section. If any
-        current-event threats were found (piracy, conflict, weather, etc.),
-        list them with severity and source URLs. Cite source URLs for all
-        current-event data.
-
-        **STEP 5 — VERIFY + REVISE (CONDITIONAL)**
+        **STEP 4 — VERIFY + REVISE (CONDITIONAL)**
         After synthesis, assess your confidence in the response on a 0-1 scale:
         - All specialists responded with consistent, source-backed data → HIGH (0.8+)
         - Well-known route (ports in reference table), no MCP failures → HIGH (0.8+)
         - Novel region, conflicting specialist data, MCP failures, chokepoint
           closures, or missing coverage → LOW (< 0.8)
 
-        If confidence >= 0.8: SKIP verification. Proceed directly to Step 6.
+        If confidence >= 0.8: SKIP verification. Proceed directly to Step 5.
         If confidence < 0.8: Delegate draft to peer_Verifier.
           If CRITICAL_ISSUES → delegate to peer_Reviser, then re-verify once.
           MINOR_ISSUES → proceed as-is.
 
-        **STEP 6 — PERSIST**
+        **STEP 5 — PERSIST**
         Call memory_plane with operation="flush_cold", query=<original question>,
         and specialists_used=<comma-separated list of specialists that responded>.
 
-        **STEP 7 — RESPOND**
+        **STEP 6 — RESPOND**
         Your final response to the user MUST be formatted as human-readable Markdown.
         NEVER return raw JSON as the final answer. Specialists return JSON for
         machine processing, but your job is to translate that into a clear,
