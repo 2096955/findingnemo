@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Repurpose the Crucix OSINT dashboard into a whale strike mitigation terminal with NOAA cetacean data, migration corridor overlays, shipping lane visualization, and Gemini-powered route recommendations.
+**Goal:** Repurpose the Crucix OSINT dashboard into a whale strike mitigation terminal with an interactive **voyage planner** — user inputs origin/destination (e.g., Tokyo to London) and gets a Gemini-generated whale-safe, conflict-aware sea route drawn on the map with trade-off analysis.
 
-**Architecture:** Skin the existing Crucix Jarvis dashboard (Approach A). Keep the Node.js server, sweep cycle, SSE, delta engine, and D3/Globe.GL map infrastructure. Replace all OSINT data sources and panels with whale-specific equivalents. LLM (Gemini) generates route recommendations instead of trade ideas.
+**Architecture:** Skin the existing Crucix Jarvis dashboard (Approach A). Keep the Node.js server, sweep cycle, SSE, delta engine, and D3/Globe.GL map infrastructure. Replace OSINT panels with whale-specific equivalents + voyage planner UI. Re-enable ACLED conflict data for danger zone avoidance. LLM (Gemini) generates both route recommendations and dynamic voyage routes.
 
-**Tech Stack:** Node.js 22+, Express, D3.js/TopoJSON (flat map), Globe.GL/Three.js (3D globe), Gemini API (via existing `lib/llm/gemini.mjs`), NOAA public APIs, SSE for live updates.
+**Tech Stack:** Node.js 22+, Express, D3.js/TopoJSON (flat map), Globe.GL/Three.js (3D globe), Gemini API (via existing `lib/llm/gemini.mjs`), NOAA public APIs, ACLED conflict data, SSE for live updates.
 
 ---
 
@@ -452,7 +452,7 @@ Replace the entire content of `crucix/apis/briefing.mjs` with:
 ```javascript
 #!/usr/bin/env node
 
-// Whale Strike Intelligence — runs whale + maritime sources in parallel
+// Whale Strike Intelligence — runs whale + maritime + conflict sources in parallel
 // Replaces the original 27-source OSINT sweep
 
 import './utils/env.mjs';
@@ -461,6 +461,7 @@ import { pathToFileURL } from 'node:url';
 import { briefing as whales } from './sources/whales.mjs';
 import { briefing as ships } from './sources/ships.mjs';
 import { briefing as noaa } from './sources/noaa.mjs';
+import { briefing as acled } from './sources/acled.mjs';
 
 const SOURCE_TIMEOUT_MS = 30_000;
 
@@ -482,13 +483,14 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting whale intelligence sweep — 3 sources...');
+  console.error('[Crucix] Starting whale intelligence sweep — 4 sources...');
   const start = Date.now();
 
   const allPromises = [
     runSource('Whales', whales),
     runSource('Maritime', ships),
     runSource('NOAA', noaa),
+    runSource('ACLED', acled),
   ];
 
   const results = await Promise.allSettled(allPromises);
@@ -528,7 +530,7 @@ if (entryHref && import.meta.url === entryHref) {
 
 Run: `cd crucix && node apis/briefing.mjs 2>&1 | head -20`
 
-Expected: JSON output with Whales, Maritime, and NOAA source data. Should complete in <10 seconds (down from 30+ with 27 sources).
+Expected: JSON output with Whales, Maritime, NOAA, and ACLED source data. Should complete in <15 seconds.
 
 **Step 3: Commit**
 
@@ -568,6 +570,30 @@ export async function synthesize(data) {
   const whaleData = data.sources.Whales || {};
   const maritimeData = data.sources.Maritime || {};
   const noaaData = data.sources.NOAA || {};
+  const acledData = data.sources.ACLED || {};
+
+  // ACLED conflict zones — used for voyage planner avoidance
+  const conflictZones = [];
+  const acledEvents = acledData.deadliestEvents || [];
+  // Group nearby events into zones
+  for (const evt of acledEvents) {
+    if (evt.lat == null || evt.lon == null) continue;
+    conflictZones.push({
+      lat: evt.lat,
+      lon: evt.lon,
+      type: evt.type,
+      country: evt.country,
+      fatalities: evt.fatalities || 0,
+      date: evt.date,
+      location: evt.location,
+    });
+  }
+  const conflictSummary = {
+    totalEvents: acledData.totalEvents || 0,
+    totalFatalities: acledData.totalFatalities || 0,
+    byRegion: acledData.byRegion || {},
+    zones: conflictZones,
+  };
 
   const corridors = (whaleData.corridors || []).map(c => ({
     id: c.id,
@@ -673,6 +699,7 @@ export async function synthesize(data) {
     historicalStrikes,
     chokepoints,
     weatherAlerts,
+    conflictSummary,
     metrics,
     globalRisk,
     riskReason,
@@ -804,7 +831,7 @@ Also update the startup banner (lines ~400-411):
   console.log(`
   ╔══════════════════════════════════════════════╗
   ║       WHALE STRIKE MITIGATION ENGINE         ║
-  ║         Route Safety · 3 Sources             ║
+  ║     Route Safety · 4 Sources · Voyage Plan   ║
   ╠══════════════════════════════════════════════╣
   ║  Dashboard:  http://localhost:${port}${' '.repeat(14 - String(port).length)}║
   ║  Health:     http://localhost:${port}/api/health${' '.repeat(4 - String(port).length)}║
@@ -912,6 +939,412 @@ git commit -m "feat: replace Jarvis frontend with whale strike mitigation dashbo
 
 ---
 
+## Task 6a: Add voyage planner API endpoint (`/api/route`)
+
+**Files:**
+- Modify: `crucix/server.mjs`
+
+**Step 1: Add the route planning endpoint**
+
+Add this endpoint to server.mjs, after the existing `/api/health` endpoint (around line 277):
+
+```javascript
+// API: voyage route planner — LLM generates whale-safe, conflict-aware route
+app.use(express.json());
+
+app.post('/api/route', async (req, res) => {
+  const { origin, destination } = req.body;
+  if (!origin || !destination) {
+    return res.status(400).json({ error: 'origin and destination are required' });
+  }
+  if (!llmProvider?.isConfigured) {
+    return res.status(503).json({ error: 'LLM not configured — route planning requires Gemini' });
+  }
+
+  console.log(`[Crucix] Route request: ${origin} → ${destination}`);
+  const startTime = Date.now();
+
+  try {
+    const whaleContext = currentData ? buildRouteAvoidanceContext(currentData) : 'No current data available.';
+
+    const systemPrompt = `You are a maritime route planning specialist. You generate sea routes between ports that avoid whale migration corridors, conflict zones, and other maritime hazards. Return ONLY valid JSON — no markdown, no explanation outside the JSON.`;
+
+    const userPrompt = `Plan a sea route from ${origin} to ${destination}.
+
+AVOIDANCE ZONES (current as of ${new Date().toISOString()}):
+
+${whaleContext}
+
+Return a JSON object with this exact structure:
+{
+  "origin": { "name": "Port Name, Country", "lat": number, "lon": number },
+  "destination": { "name": "Port Name, Country", "lat": number, "lon": number },
+  "waypoints": [
+    { "lat": number, "lon": number, "label": "description of this waypoint", "note": "why routed here" }
+  ],
+  "standardRoute": {
+    "distanceNm": number,
+    "estimatedDays": number,
+    "riskLevel": "high" | "moderate" | "low"
+  },
+  "safeRoute": {
+    "distanceNm": number,
+    "estimatedDays": number,
+    "riskLevel": "high" | "moderate" | "low",
+    "distancePenaltyNm": number,
+    "timePenaltyDays": number
+  },
+  "avoidedZones": [
+    { "name": "zone name", "type": "whale" | "conflict", "reason": "brief explanation" }
+  ],
+  "warnings": ["any relevant warnings"],
+  "seasonalNotes": "current seasonal context for whale activity along this route"
+}
+
+Rules:
+- Waypoints must be in navigable ocean/sea (not on land)
+- Include 8-15 waypoints for a realistic route
+- Compare the whale-safe route against the standard great-circle/canal route
+- Factor in current month (${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}) for seasonal whale activity
+- Use major shipping canals (Suez, Panama) when they shorten the route significantly
+- Avoid conflict zones from ACLED data
+- Waypoints should trace a plausible sea path (follow coastlines, pass through straits correctly)`;
+
+    const result = await llmProvider.complete(systemPrompt, userPrompt, {
+      maxTokens: 4096,
+      timeout: 90000,
+    });
+
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return res.status(500).json({ error: 'LLM did not return valid route JSON' });
+    }
+
+    const route = JSON.parse(jsonMatch[0]);
+    route.computedIn = Date.now() - startTime;
+    route.model = result.model;
+
+    console.log(`[Crucix] Route computed: ${origin} → ${destination} in ${route.computedIn}ms — ${route.waypoints?.length || 0} waypoints`);
+
+    res.json(route);
+  } catch (err) {
+    console.error('[Crucix] Route planning failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+```
+
+**Step 2: Add the avoidance context builder**
+
+Add this helper function near `buildWhaleRecommendationPrompt`:
+
+```javascript
+function buildRouteAvoidanceContext(data) {
+  const sections = [];
+
+  // Whale migration corridors
+  const activeCorridors = (data.corridors || []).filter(c => c.activity !== 'low');
+  if (activeCorridors.length) {
+    sections.push('WHALE MIGRATION CORRIDORS (avoid or slow to <10 knots):');
+    for (const c of activeCorridors) {
+      const waypoints = c.route.map(r => `${r.lat},${r.lon}`).join(' → ');
+      sections.push(`- ${c.species} (${c.activity}): ${waypoints}`);
+    }
+  }
+
+  // Risk zones
+  const highRisk = (data.riskZones || []).filter(z => z.riskScore >= 6);
+  if (highRisk.length) {
+    sections.push('\nHIGH-RISK WHALE STRIKE ZONES:');
+    for (const z of highRisk) {
+      sections.push(`- ${z.shippingLane} (${z.lat},${z.lon}): risk ${z.riskScore}/10, ${z.species}`);
+    }
+  }
+
+  // Conflict zones from ACLED
+  const conflicts = data.conflictSummary?.zones || [];
+  if (conflicts.length) {
+    sections.push('\nCONFLICT/DANGER ZONES (avoid entirely):');
+    for (const z of conflicts.slice(0, 15)) {
+      sections.push(`- ${z.country}, ${z.location || ''} (${z.lat},${z.lon}): ${z.type}, ${z.fatalities} fatalities`);
+    }
+  }
+
+  // Protected areas
+  const activeAreas = (data.protectedAreas || []).filter(a => a.active);
+  if (activeAreas.length) {
+    sections.push('\nPROTECTED MARINE AREAS (speed restriction zones):');
+    for (const a of activeAreas) {
+      sections.push(`- ${a.name} (${a.lat},${a.lon}): ${a.species}, radius ${a.radiusKm}km`);
+    }
+  }
+
+  return sections.join('\n');
+}
+```
+
+**Step 3: Commit**
+
+```bash
+git add crucix/server.mjs
+git commit -m "feat: add /api/route voyage planner endpoint with LLM route generation"
+```
+
+---
+
+## Task 6b: Add voyage planner UI to frontend
+
+**Files:**
+- Modify: `crucix/dashboard/public/jarvis.html`
+
+**Step 1: Add voyage planner CSS**
+
+Add these styles alongside the whale-specific CSS:
+
+```css
+/* VOYAGE PLANNER */
+.voyage-panel{border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.03);padding:12px}
+.voyage-inputs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.voyage-input{flex:1;min-width:120px;padding:8px 10px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);font-family:var(--mono);font-size:11px;letter-spacing:0.04em;outline:none;transition:border-color 0.2s}
+.voyage-input:focus{border-color:var(--accent2)}
+.voyage-input::placeholder{color:var(--dim)}
+.voyage-btn{padding:8px 16px;border:1px solid var(--accent2);background:rgba(68,204,255,0.1);color:var(--accent2);font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;transition:all 0.2s;white-space:nowrap}
+.voyage-btn:hover{background:var(--accent2);color:var(--bg)}
+.voyage-btn:disabled{opacity:0.4;cursor:not-allowed}
+.voyage-btn:disabled:hover{background:rgba(68,204,255,0.1);color:var(--accent2)}
+.voyage-loading{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--accent2);padding:8px 0}
+.voyage-loading .spin{width:14px;height:14px;border:2px solid rgba(68,204,255,0.2);border-top-color:var(--accent2);border-radius:50%;animation:spin 0.8s linear infinite}
+.voyage-result{margin-top:10px;padding:10px;border:1px solid rgba(100,240,200,0.15);background:rgba(100,240,200,0.03)}
+.voyage-compare{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.voyage-col{padding:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)}
+.voyage-col h4{font-family:var(--mono);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.voyage-col.safe{border-color:rgba(100,240,200,0.15)}
+.voyage-col.standard{border-color:rgba(255,95,99,0.15)}
+.voyage-stat{font-family:var(--mono);font-size:12px;font-weight:600;margin-bottom:4px}
+.voyage-stat .label{font-size:9px;color:var(--dim);font-weight:400;display:block;margin-bottom:2px}
+.voyage-avoided{margin-top:8px}
+.avoided-item{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:10px;border-bottom:1px solid rgba(255,255,255,0.04)}
+.avoided-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.avoided-dot.whale{background:var(--accent2)}
+.avoided-dot.conflict{background:var(--danger)}
+.voyage-route-line{fill:none;stroke:rgba(100,240,200,0.8);stroke-width:2.5;stroke-linecap:round}
+.voyage-route-line.animated{stroke-dasharray:12 6;animation:dash-flow 2s linear infinite}
+.voyage-waypoint{fill:rgba(100,240,200,0.9);stroke:rgba(100,240,200,0.3);stroke-width:1}
+.voyage-standard-line{fill:none;stroke:rgba(255,95,99,0.3);stroke-width:1.5;stroke-dasharray:4 4}
+```
+
+**Step 2: Add voyage planner to the topbar or center panel**
+
+Add the voyage planner inputs above the map (inside the center column, before the map container). The HTML structure:
+
+```html
+<div class="voyage-panel" id="voyagePanel">
+  <div class="sec-head"><h3>VOYAGE PLANNER</h3><span class="badge">LLM ROUTE</span></div>
+  <div class="voyage-inputs">
+    <input type="text" class="voyage-input" id="voyageOrigin" placeholder="Origin port (e.g., Tokyo)">
+    <input type="text" class="voyage-input" id="voyageDest" placeholder="Destination port (e.g., London)">
+    <button class="voyage-btn" id="voyageBtn" onclick="planVoyage()">PLAN ROUTE</button>
+  </div>
+  <div id="voyageStatus"></div>
+  <div id="voyageResult"></div>
+</div>
+```
+
+**Step 3: Add voyage planner JavaScript**
+
+Add the route planning logic to the `<script>` section:
+
+```javascript
+let currentVoyageRoute = null;
+
+async function planVoyage() {
+  const origin = document.getElementById('voyageOrigin').value.trim();
+  const dest = document.getElementById('voyageDest').value.trim();
+  if (!origin || !dest) return;
+
+  const btn = document.getElementById('voyageBtn');
+  const status = document.getElementById('voyageStatus');
+  const result = document.getElementById('voyageResult');
+
+  btn.disabled = true;
+  status.innerHTML = '<div class="voyage-loading"><div class="spin"></div>COMPUTING WHALE-SAFE ROUTE VIA GEMINI...</div>';
+  result.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origin, destination: dest }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const route = await res.json();
+    currentVoyageRoute = route;
+
+    status.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--accent)">ROUTE COMPUTED IN ${(route.computedIn / 1000).toFixed(1)}s — ${route.waypoints?.length || 0} WAYPOINTS</div>`;
+
+    // Render comparison
+    const sr = route.standardRoute || {};
+    const safe = route.safeRoute || {};
+    const avoided = route.avoidedZones || [];
+
+    result.innerHTML = `
+      <div class="voyage-result">
+        <div style="font-family:var(--mono);font-size:11px;font-weight:600;margin-bottom:6px">
+          ${route.origin?.name || origin} → ${route.destination?.name || dest}
+        </div>
+        ${route.seasonalNotes ? `<div style="font-size:10px;color:var(--accent2);margin-bottom:8px;line-height:1.4">${route.seasonalNotes}</div>` : ''}
+        <div class="voyage-compare">
+          <div class="voyage-col standard">
+            <h4>Standard Route</h4>
+            <div class="voyage-stat"><span class="label">Distance</span>${sr.distanceNm || '--'} nm</div>
+            <div class="voyage-stat"><span class="label">Est. Time</span>${sr.estimatedDays || '--'} days</div>
+            <div class="voyage-stat"><span class="label">Risk</span><span style="color:var(--danger)">${(sr.riskLevel || '--').toUpperCase()}</span></div>
+          </div>
+          <div class="voyage-col safe">
+            <h4>Whale-Safe Route</h4>
+            <div class="voyage-stat"><span class="label">Distance</span>${safe.distanceNm || '--'} nm</div>
+            <div class="voyage-stat"><span class="label">Est. Time</span>${safe.estimatedDays || '--'} days</div>
+            <div class="voyage-stat"><span class="label">Risk</span><span style="color:var(--accent)">${(safe.riskLevel || '--').toUpperCase()}</span></div>
+            <div class="voyage-stat" style="color:var(--warn)"><span class="label">Penalty</span>+${safe.distancePenaltyNm || 0} nm / +${safe.timePenaltyDays || 0} days</div>
+          </div>
+        </div>
+        ${avoided.length ? `
+          <div class="voyage-avoided">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin:8px 0 4px;letter-spacing:0.1em">AVOIDED ZONES</div>
+            ${avoided.map(z => `
+              <div class="avoided-item">
+                <div class="avoided-dot ${z.type}"></div>
+                <span style="font-weight:500">${z.name}</span>
+                <span style="color:var(--dim);margin-left:auto">${z.reason}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${(route.warnings || []).length ? `
+          <div style="margin-top:8px;padding:6px 8px;border:1px solid rgba(255,184,76,0.2);background:rgba(255,184,76,0.04);font-family:var(--mono);font-size:9px;color:var(--warn);line-height:1.5">
+            ${route.warnings.join('<br>')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    // Draw the route on the map
+    drawVoyageRoute(route);
+
+  } catch (err) {
+    status.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--danger)">ROUTE FAILED: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function drawVoyageRoute(route) {
+  if (!route?.waypoints?.length) return;
+
+  const waypoints = [
+    route.origin,
+    ...route.waypoints,
+    route.destination,
+  ].filter(w => w?.lat != null && w?.lon != null);
+
+  if (isFlat && flatG) {
+    // Remove previous route
+    flatG.selectAll('.voyage-route').remove();
+    flatG.selectAll('.voyage-waypoint-dot').remove();
+    flatG.selectAll('.voyage-standard').remove();
+
+    // Draw standard route (straight line, dashed red) for comparison
+    if (route.origin && route.destination) {
+      flatG.append('line')
+        .attr('class', 'voyage-standard voyage-standard-line')
+        .attr('x1', flatProjection([route.origin.lon, route.origin.lat])[0])
+        .attr('y1', flatProjection([route.origin.lon, route.origin.lat])[1])
+        .attr('x2', flatProjection([route.destination.lon, route.destination.lat])[0])
+        .attr('y2', flatProjection([route.destination.lon, route.destination.lat])[1]);
+    }
+
+    // Draw safe route (animated green line through waypoints)
+    const lineGen = d3.line()
+      .x(d => flatProjection([d.lon, d.lat])[0])
+      .y(d => flatProjection([d.lon, d.lat])[1])
+      .curve(d3.curveCardinal.tension(0.5));
+
+    flatG.append('path')
+      .attr('class', 'voyage-route voyage-route-line animated')
+      .attr('d', lineGen(waypoints));
+
+    // Draw waypoint dots
+    flatG.selectAll('.voyage-waypoint-dot')
+      .data(waypoints)
+      .enter().append('circle')
+      .attr('class', 'voyage-waypoint-dot voyage-waypoint')
+      .attr('cx', d => flatProjection([d.lon, d.lat])[0])
+      .attr('cy', d => flatProjection([d.lon, d.lat])[1])
+      .attr('r', (d, i) => (i === 0 || i === waypoints.length - 1) ? 5 : 3)
+      .append('title')
+      .text(d => d.label || d.name || '');
+
+  } else if (globe) {
+    // Globe mode — use arcs for the route
+    const arcs = [];
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      arcs.push({
+        startLat: waypoints[i].lat,
+        startLng: waypoints[i].lon,
+        endLat: waypoints[i + 1].lat,
+        endLng: waypoints[i + 1].lon,
+        color: 'rgba(100,240,200,0.9)',
+        stroke: 1.5,
+        label: waypoints[i].label || '',
+      });
+    }
+    // Add to existing arcs
+    const existingArcs = globe.arcsData() || [];
+    globe.arcsData([...existingArcs.filter(a => !a._voyage), ...arcs.map(a => ({ ...a, _voyage: true }))]);
+
+    // Add origin/destination as prominent points
+    const routePoints = [waypoints[0], waypoints[waypoints.length - 1]].map(w => ({
+      lat: w.lat, lng: w.lon, size: 0.6, color: 'rgba(100,240,200,1)',
+      alt: 0.02, popHead: w.name || w.label, popText: '', popMeta: 'Route endpoint',
+      _voyage: true,
+    }));
+    const existingPoints = globe.pointsData() || [];
+    globe.pointsData([...existingPoints.filter(p => !p._voyage), ...routePoints]);
+
+    // Pan to route midpoint
+    const mid = waypoints[Math.floor(waypoints.length / 2)];
+    globe.pointOfView({ lat: mid.lat, lng: mid.lon, altitude: 1.5 }, 1000);
+  }
+}
+```
+
+The `drawVoyageRoute` function handles both flat map (D3 path + circles) and globe mode (Globe.GL arcs + points). The green animated line is the whale-safe route; the red dashed line shows the standard direct route for comparison.
+
+**Step 4: Wire Enter key and clear function**
+
+```javascript
+// Allow Enter key to trigger route planning
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.target.id === 'voyageOrigin' || e.target.id === 'voyageDest')) {
+    planVoyage();
+  }
+});
+```
+
+**Step 5: Commit**
+
+```bash
+git add crucix/dashboard/public/jarvis.html
+git commit -m "feat: add interactive voyage planner UI with LLM route generation and map drawing"
+```
+
+---
+
 ## Task 7: Update boot sequence + loading page
 
 **Files:**
@@ -965,22 +1398,33 @@ Run: `cd crucix && node server.mjs`
 Expected:
 - Banner shows "WHALE STRIKE MITIGATION ENGINE"
 - LLM shows "gemini (gemini-2.0-flash)" (if keys configured correctly)
-- Sweep starts with 3 sources (Whales, Maritime, NOAA)
+- Sweep starts with 4 sources (Whales, Maritime, NOAA, ACLED)
 - Dashboard loads at http://localhost:3117
 
 **Step 3: Verify dashboard**
 
 - Open http://localhost:3117 in browser
 - Boot sequence should show whale-themed messages
-- Map should show whale corridors (blue dashed lines), shipping lanes (gray), risk zones (colored circles)
+- Map should show whale corridors (blue dashed lines), shipping lanes (gray), risk zones (colored circles), conflict zones (red)
 - Left rail should show species tracker
 - Right rail should show route recommendations (after LLM completes)
+- **Voyage planner**: Type "Tokyo" and "London" in the inputs, click PLAN ROUTE
+  - Should show loading spinner while Gemini computes
+  - Should draw green animated route on map avoiding whale corridors and conflict zones
+  - Should show standard vs. whale-safe route comparison
+  - Should list avoided zones
 
 **Step 4: Verify health endpoint**
 
 Run: `curl -s http://localhost:3117/api/health | python -m json.tool`
 
-Expected: JSON with version "2.0.0-whales", 3 sources queried.
+Expected: JSON with version "2.0.0-whales", 4 sources queried.
+
+**Step 5: Verify route API directly**
+
+Run: `curl -s -X POST http://localhost:3117/api/route -H "Content-Type: application/json" -d '{"origin":"Tokyo","destination":"London"}' | python -m json.tool | head -30`
+
+Expected: JSON with waypoints, standardRoute, safeRoute, avoidedZones.
 
 **Step 5: Commit (if any fixes needed)**
 
@@ -997,9 +1441,11 @@ git commit -m "fix: address issues found during end-to-end testing"
 |------|------------|-------------------|
 | 1 | Wire Gemini keys | 3 lines in .env |
 | 2 | Create whales.mjs data source | ~350 new lines |
-| 3 | Replace briefing.mjs | ~60 lines (full replace) |
-| 4 | Replace inject.mjs | ~170 lines (full replace) |
-| 5 | Update server.mjs | ~80 lines modified |
-| 6 | Replace jarvis.html frontend | ~800 lines modified |
+| 3 | Replace briefing.mjs (+ re-enable ACLED) | ~65 lines (full replace) |
+| 4 | Replace inject.mjs (+ conflict zones) | ~200 lines (full replace) |
+| 5 | Update server.mjs (recommendations + banner) | ~80 lines modified |
+| 6 | Replace jarvis.html frontend (whale panels) | ~800 lines modified |
+| 6a | Add `/api/route` voyage planner endpoint | ~120 new lines in server.mjs |
+| 6b | Add voyage planner UI + map route drawing | ~250 new lines in jarvis.html |
 | 7 | Update boot + loading | ~30 lines |
-| 8 | End-to-end test | 0 (verification) |
+| 8 | End-to-end test (dashboard + voyage planner) | 0 (verification) |
