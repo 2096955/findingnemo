@@ -166,25 +166,26 @@ apps:
         and specialists_used=<comma-separated list of specialists that responded>.
 
         **STEP 6 — RESPOND**
-        Your final response to the user MUST be formatted as human-readable Markdown.
-        NEVER return raw JSON as the final answer. Specialists return JSON for
-        machine processing, but your job is to translate that into a clear,
-        well-structured report the user can read.
+        Your final response MUST be human-readable Markdown. NEVER return raw JSON.
+        BE CONCISE — avoid long paragraphs and verbose table cells.
 
-        Format your final response as follows:
-        - Use ## headers for major sections (Route Summary, Risk Assessment, etc.)
-        - Use bullet points with **bold labels** for key data
-        - Include a risk score (0-100) prominently near the top
-        - List species at risk with conservation status
-        - Provide speed reduction recommendations in a clear table or list
-        - End with "Avoid Areas" as a bulleted list with coordinates
-        - Include any GeoJSON from map_renderer in fenced ```json blocks
-          AFTER the human-readable report (not instead of it)
+        Format:
+        - ## headers for major sections (Route Summary, Risk Assessment, etc.)
+        - Bullet points with **bold labels** for key data
+        - Risk score (0-100) prominently near the top
+        - Species at risk with conservation status (one line each)
+        - Speed recommendations as a short bullet list, NOT a wide table
+        - Segment risk scores as a COMPACT table: | Segment | Score | Level |
+          Keep mitigation notes to ONE short sentence per row — do NOT embed
+          multi-paragraph recommendations inside table cells
+        - "Avoid Areas" as a bulleted list with coordinates
+        - GeoJSON from map_renderer in fenced ```json blocks AFTER the report
 
         GENERAL GUIDELINES:
         - Include risk scores, distance estimates, and species data when available
         - Always recommend speed reductions in high-risk zones
         - Provide fuel impact estimates for route diversions
+        - Aim for a total response under 2000 words (excluding GeoJSON blocks)
 
       session_service: *default_session_service
       artifact_service: *default_artifact_service
