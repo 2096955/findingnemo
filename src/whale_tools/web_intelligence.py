@@ -47,6 +47,8 @@ _CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "port_closure": [
         "port closed", "port closure", "terminal shutdown", "port blockade",
         "port congestion", "dock strike", "labour strike", "harbor closed",
+        "strait closed", "strait closure", "waterway closed", "waterway closure",
+        "shipping lane closed", "canal closed", "passage blocked",
     ],
     "sanctions": [
         "sanctions", "embargo", "restricted vessels", "banned",
@@ -57,6 +59,11 @@ _CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "chemical spill", "toxic", "ecological disaster",
     ],
 }
+
+# Straits that are the ONLY exit from an enclosed sea.  If one of these is
+# closed, ports behind it are TRAPPED — rerouting is impossible and the
+# orchestrator must suggest alternative departure ports.
+_BOTTLENECK_STRAITS = {"hormuz", "strait of hormuz"}
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +257,13 @@ def _classify_alert(title: str, snippet: str) -> dict:
     # Boost severity for inherently dangerous categories
     if matched_cat in ("armed_conflict", "piracy") and severity == "MODERATE":
         severity = "HIGH"
+
+    # Boost to CRITICAL when a bottleneck strait coincides with closure/conflict
+    # indicators — these straits trap ports behind them, making rerouting impossible.
+    if any(s in text for s in _BOTTLENECK_STRAITS):
+        closure_signals = ("closed", "closure", "blocked", "blockade", "shutdown")
+        if any(sig in text for sig in closure_signals):
+            severity = "CRITICAL"
 
     return {"category": matched_cat, "severity": severity, "relevant": True}
 
