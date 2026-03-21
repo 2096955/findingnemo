@@ -1,0 +1,32 @@
+steps:
+  # Docker build from crucix/ subdirectory
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/whale-route-monitor:${_TAG}"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/whale-route-monitor:latest"
+      - "-f"
+      - "crucix/infra/Dockerfile.cloudrun"
+      - "crucix"
+
+  # Push tagged
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/whale-route-monitor:${_TAG}"]
+
+  # Push latest
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/whale-route-monitor:latest"]
+
+images:
+  - "gcr.io/$PROJECT_ID/whale-route-monitor:${_TAG}"
+  - "gcr.io/$PROJECT_ID/whale-route-monitor:latest"
+
+substitutions:
+  _TAG: "v1"
+
+timeout: "600s"
+
+options:
+  machineType: "E2_HIGHCPU_8"
