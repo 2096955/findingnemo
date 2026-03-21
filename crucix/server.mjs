@@ -441,7 +441,15 @@ async function runSweepCycle() {
   console.log(`[Crucix] Starting sweep at ${new Date().toLocaleTimeString()}`);
   console.log(`${'='.repeat(60)}`);
 
+  // Global sweep timeout — 120s max to prevent Cloud Run hangs
+  const SWEEP_TIMEOUT_MS = 120_000;
+  let sweepTimer;
+  const sweepTimeoutPromise = new Promise((_, reject) => {
+    sweepTimer = setTimeout(() => reject(new Error(`Sweep exceeded ${SWEEP_TIMEOUT_MS / 1000}s global timeout`)), SWEEP_TIMEOUT_MS);
+  });
+
   try {
+    const sweepWork = async () => {
     // 1. Run the full briefing sweep
     const rawData = await fullBriefing();
 
@@ -533,10 +541,15 @@ Generate 3-5 route recommendations as a JSON array. Each object must have:
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
+    }; // end sweepWork
+
+    await Promise.race([sweepWork(), sweepTimeoutPromise]);
+
   } catch (err) {
     console.error('[Crucix] Sweep failed:', err.message);
     broadcast({ type: 'sweep_error', error: err.message });
   } finally {
+    clearTimeout(sweepTimer);
     sweepInProgress = false;
   }
 }
