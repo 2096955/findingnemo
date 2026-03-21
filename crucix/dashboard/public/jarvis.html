@@ -613,6 +613,9 @@ function renderTopbar(){
 function renderLeftRail(){
   const conflictEvents = D.acled?.totalEvents || 0;
   const conflictFatal = D.acled?.totalFatalities || 0;
+  const conflictEvents = D.conflictSummary?.totalEvents || 0;
+  const conflictFatal = D.conflictSummary?.totalFatalities || 0;
+  const webThreat = D.conflictSummary?.webIntel?.overallThreatLevel || 'UNKNOWN';
   const activeCorridors = (D.corridors||[]).filter(c=>c.activity!=='low');
   const highRisk = (D.riskZones||[]).filter(z=>z.riskScore>=7);
   const activeProt = (D.protectedAreas||[]).filter(a=>a.active);
@@ -621,7 +624,7 @@ function renderLeftRail(){
     {name:'Risk Zones',count:(D.riskZones||[]).length,dot:'thermal',sub:`${highRisk.length} high risk`},
     {name:'Protected Areas',count:activeProt.length,dot:'maritime',sub:`of ${(D.protectedAreas||[]).length} total`},
     {name:'Shipping Lanes',count:(D.shippingLanes||[]).length,dot:'sdr',sub:'monitored'},
-    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'incident',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
+    {name:'Conflict Zones',count:conflictEvents,dot:'incident',sub:`threat: ${webThreat}`},
     {name:'Chokepoints',count:(D.chokepoints||[]).length,dot:'maritime',sub:'strategic passages'},
     {name:'Sightings',count:(D.sightings||[]).length,dot:'health',sub:'recent cetacean'},
     {name:'Weather Alerts',count:D.weatherAlerts?.totalAlerts||0,dot:'nuke',sub:'NOAA severe'},
@@ -1309,6 +1312,25 @@ function plotFlatMarkers(){
   (D.sightings||[]).forEach(s=>{
     if(!s.lat||!s.lon) return;
     addPt(s.lat,s.lon,2,'rgba(68,204,255,0.5)','none',null,3);
+  });
+
+  // === CONFLICT ZONES (firecrawl web intel + ACLED merged) ===
+  // Draw these LARGE and DISTINCT — pulsing orange/red rings, NOT small dots
+  const conflictZones = D.conflictSummary?.zones || [];
+  conflictZones.forEach(z=>{
+    if(!z.lat||!z.lon) return;
+    const[x,y]=proj([z.lon,z.lat]);if(!x||!y)return;
+    const isCritical = z.severity === 'CRITICAL' || z.severity === 'HIGH' || (z.fatalities && z.fatalities > 10);
+    const r = isCritical ? 12 : 8;
+    const color = isCritical ? 'rgba(255,120,80,0.8)' : 'rgba(255,160,100,0.6)';
+    // Outer pulsing ring
+    const g=mg.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer').attr('data-priority',1)
+      .on('click',ev=>{ev.stopPropagation();showPopup(ev,
+        (z.severity||'CONFLICT')+': '+(z.type||'armed_conflict'),
+        `${z.title||z.location||''}<br>${z.summary||''}<br>Region: ${z.country||z.region||''}`,
+        z.sourceUrl ? 'Source: '+z.sourceUrl.substring(0,50) : (z.fatalities ? z.fatalities+' fatalities' : 'Web Intelligence'))});
+    g.append('circle').attr('class','conflict-ring marker-circle').attr('r',r).attr('data-base-r',r).attr('fill','none').attr('stroke',color).attr('stroke-width',2);
+    g.append('circle').attr('r',r*0.4).attr('fill',isCritical?'rgba(255,100,60,0.5)':'rgba(255,140,80,0.3)');
   });
 
   // === DEMO SHIPPING ROUTES ===
