@@ -25,7 +25,7 @@ const geoKeywords = {
   'Singapore':[1.35,103.8],'Indonesia':[-2,118],'Pakistan':[30,70],
   // Maritime-specific
   'Suez':[30,32.3],'Panama Canal':[9,-79.5],'Strait of Hormuz':[26.6,56.2],
-  'Malacca':[2.5,101.8],'Bab el-Mandeb':[12.6,43.3],'Gibraltar':[36,−5.5],
+  'Malacca':[2.5,101.8],'Bab el-Mandeb':[12.6,43.3],'Gibraltar':[36,-5.5],
   'Cape of Good Hope':[-34.4,18.5],'Red Sea':[20,38],'South China Sea':[14,114],
   'Arctic':[75,0],'Antarctic':[-75,0],'whale':[42,-70],'shipping':[40,-74],
   'maritime':[51.5,-0.1],'piracy':[5,46],'Navy':[38.9,-77],
@@ -309,8 +309,7 @@ export async function synthesize(data) {
 // generateIdeas is now generateRecommendations — but LLM handles this in server.mjs
 export function generateIdeas() { return []; }
 
-// fetchAllNews removed — not needed for whale dashboard
-export async function fetchAllNews() { return []; }
+// fetchAllNews is now defined at top of file with RSS feeds
 
 // === CLI Mode ===
 async function cliInject() {
