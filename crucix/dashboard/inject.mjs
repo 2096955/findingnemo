@@ -134,8 +134,20 @@ export async function synthesize(data) {
     n: name, err: Boolean(src.error), stale: Boolean(src.stale),
   }));
 
+  // === Compatibility layer: provide safe defaults for original Crucix fields ===
+  // The jarvis.html frontend references D.air, D.thermal, etc. — provide empty/stub
+  // versions so existing render functions don't crash, while whale data overlays on top.
+  const acledCompat = {
+    totalEvents: acledData.totalEvents || 0,
+    totalFatalities: acledData.totalFatalities || 0,
+    byRegion: acledData.byRegion || {},
+    topCountries: acledData.topCountries || {},
+    deadliestEvents: acledData.deadliestEvents || [],
+  };
+
   const V2 = {
     meta: data.crucix,
+    // --- Whale-specific ---
     corridors,
     riskZones,
     shippingLanes,
@@ -143,7 +155,6 @@ export async function synthesize(data) {
     sightings,
     speciesStatus,
     historicalStrikes,
-    chokepoints,
     weatherAlerts,
     conflictSummary,
     metrics,
@@ -152,6 +163,31 @@ export async function synthesize(data) {
     health,
     recommendations: [],
     recommendationsSource: 'disabled',
+    // --- Original Crucix compat (safe stubs so jarvis.html doesn't crash) ---
+    air: [],
+    thermal: [],
+    sdr: { total: 0, online: 0, receivers: [] },
+    nuke: [],
+    fred: [],
+    tg: { posts: 0, urgent: [], topPosts: [], channels: [] },
+    who: [],
+    news: [],
+    newsFeed: [],
+    chokepoints,
+    acled: acledCompat,
+    treasury: { totalDebt: '0' },
+    space: null,
+    ideas: [],
+    ideasSource: 'disabled',
+    tSignals: [],
+    bls: [],
+    gscpi: null,
+    markets: {},
+    noaa: { alerts: [] },
+    epa: { stations: [] },
+    gdelt: { geoPoints: [] },
+    energy: {},
+    delta: null,
   };
 
   return V2;

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CRUCIX — Intelligence Terminal</title>
+<title>WHALE STRIKE — Route Safety Terminal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -324,9 +324,9 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 </head>
 <body>
 <div id="boot">
-  <div class="logo-ring"><span class="logo-text">CRUCIX</span></div>
+  <div class="logo-ring"><span class="logo-text">WHALE<br>STRIKE</span></div>
   <div id="bootLines"></div>
-  <div id="bootFinal">TERMINAL ACTIVE</div>
+  <div id="bootFinal">ROUTE SAFETY TERMINAL ACTIVE</div>
 </div>
 <div class="bg-radial" id="bgRadial"></div>
 <div class="bg-grid" id="bgGrid"></div>
@@ -584,84 +584,87 @@ function renderTopbar(){
   const ts = new Date(D.meta.timestamp);
   const d = ts.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
   const timeStr = ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
+  const riskClass = D.globalRisk === 'CRITICAL' ? 'danger' : D.globalRisk === 'HIGH' ? 'warn' : 'ok';
+  const riskLabel = D.globalRisk || 'MODERATE';
+  const riskReasonText = D.riskReason || 'MONITORING';
+  const activeCorridors = (D.corridors||[]).filter(c=>c.activity!=='low').length;
+  const highRiskCount = (D.riskZones||[]).filter(z=>z.riskScore>=7).length;
   document.getElementById('topbar').innerHTML=`
     <div class="top-left">
-      <span class="brand">CRUCIX MONITOR</span>
-      <span class="regime-chip"><span class="blink"></span>WARTIME STAGFLATION RISK</span>
+      <span class="brand">WHALE STRIKE MONITOR</span>
+      <span class="regime-chip" style="border-color:${riskClass==='danger'?'rgba(255,95,99,0.3)':riskClass==='warn'?'rgba(255,184,76,0.3)':'rgba(100,240,200,0.3)'}"><span class="blink" style="background:${riskClass==='danger'?'var(--danger)':riskClass==='warn'?'var(--warn)':'var(--accent)'}"></span>${riskLabel} — ${riskReasonText}</span>
     </div>
     ${mobile ? `<div class="top-center">${getRegionControlsMarkup()}</div>` : ''}
     <div class="top-right">
-      <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.perf','PERF')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.perfLow','LOW'):t('dashboard.perfHigh','HIGH')}</span></button>
+      <button class="meta-pill perf-pill" onclick="togglePerfMode()" title="Reduce visual effects">${t('dashboard.perf','PERF')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.perfLow','LOW'):t('dashboard.perfHigh','HIGH')}</span></button>
       <span class="meta-pill">${t('dashboard.sweep','SWEEP')} <span class="v">${(D.meta.totalDurationMs/1000).toFixed(1)}s</span></span>
       <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
       <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
+      <span class="meta-pill">CORRIDORS <span class="v">${activeCorridors} ACTIVE</span></span>
+      <span class="meta-pill">RISK ZONES <span class="v">${highRiskCount} HIGH</span></span>
       ${D.delta?.summary ? `<span class="meta-pill">${t('dashboard.delta','DELTA')} <span class="v">${D.delta.summary.direction==='risk-off'?'&#x25B2; '+t('dashboard.riskOff','RISK-OFF'):D.delta.summary.direction==='risk-on'?'&#x25BC; '+t('dashboard.riskOn','RISK-ON'):'&#x25C6; '+t('dashboard.mixed','MIXED')}</span></span>` : ''}
       <button class="guide-btn" onclick="openGlossary()">${t('dashboard.guideBtn','What Signals Mean')}</button>
-      <span class="alert-badge">${t('dashboard.highAlert','HIGH ALERT')}</span>
+      <span class="alert-badge">${riskLabel}</span>
     </div>`;
   renderRegionControls();
 }
 
 // === LEFT RAIL ===
 function renderLeftRail(){
-  const totalAir=D.air.reduce((s,a)=>s+a.total,0);
-  const totalThermal=D.thermal.reduce((s,t)=>s+t.det,0);
-  const totalNight=D.thermal.reduce((s,t)=>s+t.night,0);
-  const newsCount=(D.news||[]).length;
   const conflictEvents = D.acled?.totalEvents || 0;
   const conflictFatal = D.acled?.totalFatalities || 0;
+  const activeCorridors = (D.corridors||[]).filter(c=>c.activity!=='low');
+  const highRisk = (D.riskZones||[]).filter(z=>z.riskScore>=7);
+  const activeProt = (D.protectedAreas||[]).filter(a=>a.active);
   const layers=[
-    {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`},
-    {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`},
-    {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`},
-    {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints')},
-    {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
-    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
-    {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts')},
-    {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
-    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
-    {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
+    {name:'Whale Corridors',count:activeCorridors.length,dot:'air',sub:`of ${(D.corridors||[]).length} total`},
+    {name:'Risk Zones',count:(D.riskZones||[]).length,dot:'thermal',sub:`${highRisk.length} high risk`},
+    {name:'Protected Areas',count:activeProt.length,dot:'maritime',sub:`of ${(D.protectedAreas||[]).length} total`},
+    {name:'Shipping Lanes',count:(D.shippingLanes||[]).length,dot:'sdr',sub:'monitored'},
+    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'incident',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
+    {name:'Chokepoints',count:(D.chokepoints||[]).length,dot:'maritime',sub:'strategic passages'},
+    {name:'Sightings',count:(D.sightings||[]).length,dot:'health',sub:'recent cetacean'},
+    {name:'Weather Alerts',count:D.weatherAlerts?.totalAlerts||0,dot:'nuke',sub:'NOAA severe'},
   ];
-  const allNormal=D.nuke.every(s=>!s.anom);
-  const nukeHtml=D.nuke.map(s=>`<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
-  const vix=D.fred.find(f=>f.id==='VIXCLS');
-  const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
-  const usd=D.fred.find(f=>f.id==='DTWEXBGS');
-  const m2=D.fred.find(f=>f.id==='M2SL');
-  const mort=D.fred.find(f=>f.id==='MORTGAGE30US');
-  const claims=D.fred.find(f=>f.id==='ICSA');
+
+  // Corridor status panel
+  const corridorHtml = (D.corridors||[]).map(c=>{
+    const actColor = c.activity==='calving'?'var(--danger)':c.activity==='feeding'?'var(--accent2)':c.activity==='migrating'?'var(--warn)':'var(--dim)';
+    return `<div class="site-row" style="display:flex;align-items:center;gap:6px;padding:6px 8px">
+      <div style="width:8px;height:8px;border-radius:50%;background:${actColor};box-shadow:0 0 4px ${actColor};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.species}</div>
+        <div style="font-size:9px;color:var(--dim)">${c.status||''} · ~${(c.estimatedPopulation||0).toLocaleString()}</div>
+      </div>
+      <span style="font-family:var(--mono);font-size:9px;letter-spacing:0.06em;text-transform:uppercase;color:${actColor}">${c.activity}</span>
+    </div>`;
+  }).join('');
+
+  // Protected areas
+  const areaHtml = (D.protectedAreas||[]).slice(0,6).map(a=>`<div class="site-row"><span>${a.name}</span><span class="site-val" style="color:${a.active?'var(--accent)':'var(--dim)'}">${a.active?'ACTIVE':'INACTIVE'}</span></div>`).join('');
+
+  // Top risk zones
+  const riskHtml = (D.riskZones||[]).sort((a,b)=>b.riskScore-a.riskScore).slice(0,5).map(z=>{
+    const c = z.riskScore>=8?'var(--danger)':z.riskScore>=6?'var(--warn)':'var(--accent)';
+    return `<div class="econ-row"><span class="elabel" style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${z.shippingLane}</span><span class="eval" style="color:${c}">${z.riskScore}/10</span></div>`;
+  }).join('');
 
   document.getElementById('leftRail').innerHTML=`
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
+      <div class="sec-head"><h3>Maritime Sensor Grid</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
       ${layers.map(l=>`<div class="layer-item"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div></div>`).join('')}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
-      <div class="nuke-ok">${allNormal?'&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL'):'&#9888; '+t('nuclear.anomalyDetected','ANOMALY DETECTED')}</div>
-      ${nukeHtml}
+      <div class="sec-head"><h3>Migration Corridors</h3><span class="badge" style="color:var(--accent2);border-color:rgba(68,204,255,0.3)">${activeCorridors.length} ACTIVE</span></div>
+      ${corridorHtml}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.riskGauges','Risk Gauges')}</h3><span class="badge">${t('badges.stress','STRESS')}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.vix','VIX')} (Fear)</span><span class="eval" style="color:${vix?.value>20?'var(--warn)':'var(--accent)'}">${vix?.value||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.hySpread','HY Spread')}</span><span class="eval">${hy?.value||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.usdIndex','USD Index')}</span><span class="eval">${usd?.value?.toFixed(1)||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.joblessClaims','Jobless Claims')}</span><span class="eval">${claims?.value?.toLocaleString()||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.mortgage30y','30Y Mortgage')}</span><span class="eval">${mort?.value||'--'}%</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.m2Supply','M2 Supply')}</span><span class="eval">$${(m2?.value/1000)?.toFixed(1)||'--'}T</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">$${(parseFloat(D.treasury.totalDebt)/1e12).toFixed(2)}T</span></div>
+      <div class="sec-head"><h3>Protected Areas</h3><span class="badge">${activeProt.length} ACTIVE</span></div>
+      ${areaHtml}
     </div>
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.spaceWatch','Space Watch')}</h3><span class="badge">${t('badges.orbital','CELESTRAK')}</span></div>
-      ${D.space ? `
-        <div class="econ-row"><span class="elabel">New Objects (30d)</span><span class="eval" style="color:var(--accent2)">${D.space.totalNewObjects||0}</span></div>
-        <div class="econ-row"><span class="elabel">Military Sats</span><span class="eval">${D.space.militarySats||0}</span></div>
-        <div class="econ-row"><span class="elabel">Starlink</span><span class="eval">${D.space.constellations?.starlink||0}</span></div>
-        <div class="econ-row"><span class="elabel">OneWeb</span><span class="eval">${D.space.constellations?.oneweb||0}</span></div>
-        ${D.space.iss ? `<div class="econ-row"><span class="elabel">ISS</span><span class="eval" style="color:var(--accent)">ALT ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km</span></div>` : ''}
-        ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row"><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} mil sats</span></div>`).join('')}
-        ${(D.space.signals||[]).length ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${D.space.signals.slice(0,2).join('<br>')}</div>` : ''}
-      ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO SPACE DATA</div>'}
+      <div class="sec-head"><h3>Risk Zones</h3><span class="badge" style="color:var(--danger);border-color:rgba(255,95,99,0.3)">${highRisk.length} HIGH</span></div>
+      ${riskHtml}
     </div>`;
 }
 
@@ -681,8 +684,8 @@ function bindMapLifecycleEvents(){
 
 function renderMapLegend(){
   document.getElementById('mapLegend').innerHTML=
-    [{c:'#64f0c8',l:t('map.airTraffic','Air Traffic')},{c:'#ff5f63',l:t('map.thermalFire','Thermal/Fire')},{c:'rgba(255,120,80,0.8)',l:t('map.conflict','Conflict')},{c:'#44ccff',l:t('map.sdrReceiver','SDR Receiver')},
-     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint')},{c:'#ffb84c',l:t('map.osintEvent','OSINT Event')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
+    [{c:'#44ccff',l:'Feeding Corridor'},{c:'#ff5f63',l:'Calving Corridor'},{c:'#ffb84c',l:'Migrating'},{c:'rgba(255,120,80,0.8)',l:'Conflict Zone'},
+     {c:'rgba(68,204,255,0.3)',l:'Protected Area'},{c:'#b388ff',l:'Chokepoint'},{c:'#ff9800',l:'Weather Alert'},{c:'#00e676',l:'Planned Route'},{c:'rgba(255,95,99,0.5)',l:'Shipping Lane (risk)'}]
     .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
 }
 
@@ -1261,7 +1264,54 @@ function plotFlatMarkers(){
     g.append('circle').attr('class','conflict-ring marker-circle').attr('r',r).attr('data-base-r',r).attr('fill','none').attr('stroke','rgba(255,120,80,0.7)').attr('stroke-width',1.5);
     g.append('circle').attr('r',r*0.4).attr('fill','rgba(255,120,80,0.3)');
   });
-  // Flight corridors
+
+  // === WHALE LAYERS ===
+  const whaleG = flatG.append('g').attr('class','whale-layer');
+
+  // Shipping lanes
+  (D.shippingLanes||[]).forEach(lane=>{
+    const laneColor = lane.risk==='critical'?'rgba(255,95,99,0.4)':lane.risk==='high'?'rgba(255,184,76,0.3)':'rgba(100,240,200,0.2)';
+    lane.segments.forEach(seg=>{
+      const coords=[[seg.from.lon,seg.from.lat],[seg.to.lon,seg.to.lat]];
+      const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
+      whaleG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',laneColor).attr('stroke-width',1.5).attr('stroke-dasharray','4,3').attr('opacity',0.7);
+    });
+  });
+
+  // Migration corridors (active only)
+  (D.corridors||[]).filter(c=>c.activity!=='low').forEach(c=>{
+    const coords = (c.route||[]).map(r=>[r.lon,r.lat]);
+    if(coords.length<2) return;
+    const color = c.activity==='calving'?'#ff5f63':c.activity==='feeding'?'#44ccff':'#ffb84c';
+    const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
+    whaleG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',color).attr('stroke-width',2).attr('stroke-dasharray','8,4').attr('class','corridor-flow').attr('opacity',0.8);
+    // Waypoint dots on corridor
+    c.route.forEach(pt=>{
+      addPt(pt.lat,pt.lon,3,color,'none',ev=>showPopup(ev,c.species,`${pt.label}<br>Activity: ${c.activity}<br>Status: ${c.status}`,`~${(c.estimatedPopulation||0).toLocaleString()} remaining`),1);
+    });
+  });
+
+  // Risk zones
+  (D.riskZones||[]).forEach(z=>{
+    const color = z.riskScore>=8?'#ff5f63':z.riskScore>=6?'#ffb84c':'#64f0c8';
+    const[x,y]=proj([z.lon,z.lat]);if(!x||!y)return;
+    whaleG.append('circle').attr('cx',x).attr('cy',y).attr('r',8).attr('fill',color).attr('opacity',0.12);
+    addPt(z.lat,z.lon,3,color,'none',ev=>showPopup(ev,`Risk: ${z.riskScore}/10`,`${z.shippingLane}<br>${z.species} (${z.activity})`,`Vessel density: ${z.vesselDensity}`),2);
+  });
+
+  // Protected areas (active)
+  (D.protectedAreas||[]).filter(a=>a.active).forEach(a=>{
+    const[x,y]=proj([a.lon,a.lat]);if(!x||!y)return;
+    whaleG.append('circle').attr('cx',x).attr('cy',y).attr('r',Math.max(a.radiusKm/40,4)).attr('fill','rgba(68,204,255,0.05)').attr('stroke','rgba(68,204,255,0.25)').attr('stroke-width',1).attr('stroke-dasharray','3,2');
+  });
+
+  // Sightings
+  (D.sightings||[]).forEach(s=>{
+    if(!s.lat||!s.lon) return;
+    addPt(s.lat,s.lon,2,'rgba(68,204,255,0.5)','none',null,3);
+  });
+
+  // Flight corridors (kept — still relevant for SAR/coast guard flights)
   if(flightsVisible){
     const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
     const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
@@ -1510,29 +1560,36 @@ function renderLower(){
 
 // === RIGHT RAIL ===
 function renderRight(){
-  const mobile = isMobileLayout();
-  // CROSS-SOURCE SIGNALS — moved from lower grid to right rail
-  const signals=D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row"><strong>Signal ${i+1}</strong><p>${s}</p></div>`).join('');
-
-  // OSINT TICKER — Telegram + WHO as flowing cards
-  const signalMetrics=[
-    {l:'Incident Tempo',v:D.tg.urgent.length,p:70},
-    {l:'Air Theaters',v:D.air.length,p:60},
-    {l:'Thermal Spikes',v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
-    {l:'SDR Nodes',v:D.sdr.total,p:92},
-    {l:'Chokepoints',v:D.chokepoints.length,p:50},
-    {l:'WHO Alerts',v:D.who.length,p:40}
-  ];
+  const recs = D.recommendations || [];
+  const recsHtml = recs.slice(0,5).map(r=>{
+    const pCls = (r.priority||'moderate').toLowerCase();
+    return `<div class="idea-card" style="border-color:${pCls==='critical'?'rgba(255,95,99,0.2)':pCls==='high'?'rgba(255,184,76,0.2)':'rgba(100,240,200,0.1)'}">
+      <span class="idea-type ${pCls==='critical'?'short':pCls==='high'?'hedge':'watch'}">${(r.priority||'MOD').toUpperCase()}</span>
+      <div class="idea-title">${r.lane||'Shipping Lane'}</div>
+      <div class="idea-text">${r.action||''}</div>
+      <div class="idea-conf">${r.species||''} · Risk -${r.riskReduction||0}% · ${r.validDates||''}</div>
+    </div>`;
+  }).join('');
 
   document.getElementById('rightRail').innerHTML=`
-    <div class="g-panel right-signals">
-      <div class="sec-head"><h3>${t('panels.crossSourceSignals','Cross-Source Signals')}</h3><span class="badge">${t('badges.worldview','WORLDVIEW')}</span></div>
-      ${signals}
+    <div class="g-panel">
+      <div class="sec-head"><h3>Voyage Planner</h3><span class="badge" style="color:var(--accent2);border-color:rgba(68,204,255,0.3)">GEMINI</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--dim);margin-bottom:4px">ORIGIN PORT</div>
+          <input id="voyageOrigin" type="text" placeholder="e.g. Tokyo, Japan" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid var(--border);background:rgba(255,255,255,0.03);color:var(--text);font-family:var(--sans);font-size:13px;outline:none">
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;letter-spacing:0.1em;color:var(--dim);margin-bottom:4px">DESTINATION PORT</div>
+          <input id="voyageDest" type="text" placeholder="e.g. London, UK" autocomplete="off" style="width:100%;padding:8px 10px;border:1px solid var(--border);background:rgba(255,255,255,0.03);color:var(--text);font-family:var(--sans);font-size:13px;outline:none">
+        </div>
+        <button id="voyageBtn" onclick="planRoute()" style="width:100%;padding:10px;border:1px solid rgba(68,204,255,0.4);background:rgba(68,204,255,0.08);color:var(--accent2);font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer">PLAN WHALE-SAFE ROUTE</button>
+      </div>
+      <div id="routeResult"></div>
     </div>
-    ${mobile ? '' : buildOsintPanel('right-osint', 260)}
-    <div class="g-panel right-core">
-      <div class="sec-head"><h3>${t('panels.signalCore','Signal Core')}</h3><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
-      ${signalMetrics.map(s=>`<div class="sm"><span class="sml">${s.l}</span><div class="smb"><span style="width:${s.p}%"></span></div><span class="smv">${s.v}</span></div>`).join('')}
+    <div class="g-panel">
+      <div class="sec-head"><h3>Route Recommendations</h3><span class="badge">${recs.length}</span></div>
+      ${recs.length ? recsHtml : '<div style="font-size:11px;color:var(--dim);padding:8px;font-family:var(--mono)">Configure LLM to enable AI route recommendations.</div>'}
     </div>`;
 }
 
@@ -1541,23 +1598,122 @@ function getAge(d){const ms=Date.now()-new Date(d).getTime();const h=Math.floor(
 function cleanText(t){return t.replace(/&#39;/g,"'").replace(/&#33;/g,"!").replace(/&amp;/g,"&").replace(/<[^>]+>/g,'')}
 function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.protocol==='http:'||u.protocol==='https:'?u.toString():null}catch{return null}}
 
+// === VOYAGE PLANNER ===
+let currentRoute = null;
+async function planRoute(){
+  const origin=document.getElementById('voyageOrigin').value.trim();
+  const dest=document.getElementById('voyageDest').value.trim();
+  if(!origin||!dest) return;
+  const btn=document.getElementById('voyageBtn');
+  const resultDiv=document.getElementById('routeResult');
+  btn.disabled=true;btn.textContent='COMPUTING...';
+  resultDiv.innerHTML='<div style="font-family:var(--mono);font-size:10px;color:var(--dim);padding:12px;text-align:center">Gemini is computing your whale-safe route...</div>';
+  try{
+    const res=await fetch('/api/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin,destination:dest})});
+    if(!res.ok){const err=await res.json().catch(()=>({error:'Route planning failed'}));throw new Error(err.error||'Failed');}
+    currentRoute=await res.json();
+    renderRouteResult(currentRoute);
+    drawRouteOnMap(currentRoute);
+  }catch(e){
+    resultDiv.innerHTML=`<div style="padding:10px;border:1px solid rgba(255,95,99,0.3);background:rgba(255,95,99,0.05);font-size:11px;color:var(--danger);margin-top:8px">${e.message}</div>`;
+  }finally{
+    btn.disabled=false;btn.textContent='PLAN WHALE-SAFE ROUTE';
+  }
+}
+
+function renderRouteResult(route){
+  const resultDiv=document.getElementById('routeResult');
+  const std=route.standardRoute||{};
+  const safe=route.safeRoute||{};
+  const avoided=route.avoidedZones||[];
+  const warnings=route.warnings||[];
+  const rc=r=>r==='low'?'var(--accent)':r==='moderate'?'var(--warn)':'var(--danger)';
+  let html=`<div style="margin-top:10px;border:1px solid rgba(68,204,255,0.15);background:rgba(68,204,255,0.03);padding:10px">
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.1em;color:var(--accent2);margin-bottom:6px">${route.origin?.name||''} → ${route.destination?.name||''}</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:8px">Computed in ${route.computedIn||0}ms · ${(route.waypoints||[]).length} waypoints</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px">STANDARD ROUTE</div>
+    <div class="econ-row"><span class="elabel">Distance</span><span class="eval">${std.distanceNm?.toLocaleString()||'--'} nm</span></div>
+    <div class="econ-row"><span class="elabel">Est. Time</span><span class="eval">${std.estimatedDays||'--'} days</span></div>
+    <div class="econ-row"><span class="elabel">Risk</span><span class="eval" style="color:${rc(std.riskLevel)}">${(std.riskLevel||'--').toUpperCase()}</span></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--accent2);margin:8px 0 4px">WHALE-SAFE ROUTE</div>
+    <div class="econ-row"><span class="elabel">Distance</span><span class="eval">${safe.distanceNm?.toLocaleString()||'--'} nm</span></div>
+    <div class="econ-row"><span class="elabel">Est. Time</span><span class="eval">${safe.estimatedDays||'--'} days</span></div>
+    <div class="econ-row"><span class="elabel">Risk</span><span class="eval" style="color:${rc(safe.riskLevel)}">${(safe.riskLevel||'--').toUpperCase()}</span></div>
+    <div class="econ-row"><span class="elabel">Penalty</span><span class="eval" style="color:var(--warn)">+${safe.distancePenaltyNm||0} nm / +${safe.timePenaltyDays||0} days</span></div>
+  </div>`;
+  if(avoided.length){
+    html+=`<div style="margin-top:6px;border:1px solid rgba(68,204,255,0.1);padding:8px"><div style="font-family:var(--mono);font-size:9px;color:var(--accent2);margin-bottom:4px">AVOIDED ZONES (${avoided.length})</div>`;
+    for(const z of avoided) html+=`<div style="font-size:10px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03)">${z.type==='whale'?'🐋':'⚠️'} ${z.name} <span style="font-family:var(--mono);font-size:8px;color:${z.type==='whale'?'var(--accent2)':'var(--danger)'}">${z.type.toUpperCase()}</span></div>`;
+    html+='</div>';
+  }
+  if(warnings.length){
+    html+='<div style="margin-top:6px;padding:8px;border:1px solid rgba(255,184,76,0.2);background:rgba(255,184,76,0.04)">';
+    for(const w of warnings) html+=`<div style="font-size:10px;color:var(--warn);margin-bottom:2px">⚠ ${w}</div>`;
+    html+='</div>';
+  }
+  if(route.seasonalNotes) html+=`<div style="margin-top:6px;font-size:10px;color:var(--dim);padding:8px;border:1px solid rgba(255,255,255,0.04)">${route.seasonalNotes}</div>`;
+  resultDiv.innerHTML=html;
+}
+
+function drawRouteOnMap(route){
+  if(!route?.waypoints?.length) return;
+  // Draw on flat map if available
+  if(flatG && flatProjection){
+    flatG.selectAll('.route-layer').remove();
+    const rG=flatG.append('g').attr('class','route-layer');
+    const allPts=[];
+    if(route.origin) allPts.push([route.origin.lon,route.origin.lat]);
+    for(const wp of route.waypoints) allPts.push([wp.lon,wp.lat]);
+    if(route.destination) allPts.push([route.destination.lon,route.destination.lat]);
+    const feat={type:'Feature',geometry:{type:'LineString',coordinates:allPts}};
+    // Glow
+    rG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke','#00e676').attr('stroke-width',6).attr('opacity',0.15);
+    // Main line
+    rG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke','#00e676').attr('stroke-width',2.5).attr('stroke-dasharray','10,5').attr('class','corridor-flow').attr('opacity',0.9);
+    // Waypoint dots
+    route.waypoints.forEach(wp=>{
+      const[x,y]=flatProjection([wp.lon,wp.lat]);if(!x||!y)return;
+      rG.append('circle').attr('cx',x).attr('cy',y).attr('r',3).attr('fill','#00e676').attr('opacity',0.8).style('cursor','pointer')
+        .on('click',ev=>{ev.stopPropagation();showPopup(ev,wp.label||'Waypoint',wp.note||'','Route')});
+    });
+    // Origin marker
+    if(route.origin){const[x,y]=flatProjection([route.origin.lon,route.origin.lat]);if(x&&y){
+      rG.append('circle').attr('cx',x).attr('cy',y).attr('r',6).attr('fill','none').attr('stroke','#00e676').attr('stroke-width',2);
+      rG.append('circle').attr('cx',x).attr('cy',y).attr('r',3).attr('fill','#00e676');
+    }}
+    // Destination marker
+    if(route.destination){const[x,y]=flatProjection([route.destination.lon,route.destination.lat]);if(x&&y){
+      rG.append('rect').attr('x',x-5).attr('y',y-5).attr('width',10).attr('height',10).attr('fill','#00e676').attr('opacity',0.9).attr('transform',`rotate(45,${x},${y})`);
+    }}
+    // Zoom to route
+    const bounds=flatPath.bounds(feat);
+    if(bounds[0][0]!==Infinity){
+      const dx=bounds[1][0]-bounds[0][0],dy=bounds[1][1]-bounds[0][1];
+      const cx=(bounds[0][0]+bounds[1][0])/2,cy=(bounds[0][1]+bounds[1][1])/2;
+      const scale=Math.min(8,0.8/Math.max(dx/flatW,dy/flatH));
+      flatSvg.transition().duration(1000).call(flatZoom.transform,d3.zoomIdentity.translate(flatW/2-scale*cx,flatH/2-scale*cy).scale(scale));
+    }
+  }
+}
+
 // === BOOT SEQUENCE ===
 function runBoot(){
   const acledStatus = D.acled?.totalEvents > 0 ? `<span class="ok">${D.acled.totalEvents} EVENTS</span>` : '<span style="color:var(--warn)">DEGRADED</span>';
+  const activeCorr = (D.corridors||[]).filter(c=>c.activity!=='low').length;
   const lines=[
-    {text:t('boot.initializing','INITIALIZING CRUCIX ENGINE v2.1.0'),delay:0},
-    {text:t('boot.connecting','CONNECTING {count} OSINT SOURCES...').replace('{count}',D.meta.sourcesQueried),delay:400},
-    {text:'&#9500;&#9472; '+t('boot.sourceGroup1','OPENSKY · FIRMS · KIWISDR · MARITIME'),delay:700},
-    {text:'&#9500;&#9472; '+t('boot.sourceGroup2','FRED · BLS · EIA · TREASURY · GSCPI'),delay:900},
-    {text:'&#9500;&#9472; '+t('boot.sourceGroup3','TELEGRAM · SAFECAST · EPA · WHO · OFAC'),delay:1100},
-    {text:'&#9492;&#9472; '+t('boot.sourceGroup4','GDELT · NOAA · PATENTS · BLUESKY · REDDIT'),delay:1300},
-    {text:t('boot.sweepComplete','SWEEP COMPLETE — {ok}/{total} SOURCES').replace('{ok}',`<span class="count">${D.meta.sourcesOk}</span>`).replace('{total}',D.meta.sourcesQueried)+' <span class="ok">'+t('boot.ok','OK')+'</span>',delay:1700},
-    {text:t('boot.acledLayer','ACLED CONFLICT LAYER')+': '+acledStatus,delay:1900},
-    {text:t('boot.flightCorridors','FLIGHT CORRIDORS')+': <span class="ok">'+t('boot.active','ACTIVE')+'</span> &#183; '+t('boot.dualProjection','DUAL PROJECTION')+': <span class="ok">'+t('boot.ready','READY')+'</span>',delay:2100},
-    {text:t('boot.intelligenceSynthesis','INTELLIGENCE SYNTHESIS')+': <span class="ok">'+t('boot.active','ACTIVE')+'</span>',delay:2400},
+    {text:'INITIALIZING WHALE STRIKE ENGINE v2.1.0',delay:0},
+    {text:`CONNECTING ${D.meta.sourcesQueried} MARITIME SAFETY SOURCES...`,delay:400},
+    {text:'&#9500;&#9472; NOAA CETACEAN · WHALE CORRIDORS · SHIPPING LANES',delay:700},
+    {text:'&#9500;&#9472; ACLED CONFLICT · PROTECTED AREAS · RISK ZONES',delay:900},
+    {text:'&#9492;&#9472; GEMINI ROUTE PLANNER · SSE LIVE UPDATES',delay:1100},
+    {text:`SWEEP COMPLETE — <span class="count">${D.meta.sourcesOk}</span>/${D.meta.sourcesQueried} SOURCES <span class="ok">OK</span>`,delay:1500},
+    {text:'ACLED CONFLICT LAYER: '+acledStatus,delay:1700},
+    {text:`MIGRATION CORRIDORS: <span class="ok">${activeCorr} ACTIVE</span> · RISK ZONES: <span class="ok">${(D.riskZones||[]).length} MAPPED</span>`,delay:1900},
+    {text:'VOYAGE PLANNER: <span class="ok">READY</span> · DUAL PROJECTION: <span class="ok">READY</span>',delay:2100},
+    {text:`GLOBAL RISK: <span class="ok">${D.globalRisk||'MODERATE'}</span> — ${D.riskReason||'MONITORING'}`,delay:2400},
   ];
   const container=document.getElementById('bootLines');
-  document.getElementById('bootFinal').textContent=t('dashboard.terminalActive','TERMINAL ACTIVE');
+  document.getElementById('bootFinal').textContent='ROUTE SAFETY TERMINAL ACTIVE';
   const tl=gsap.timeline();
   tl.to('.logo-ring',{opacity:1,duration:0.6,ease:'power2.out'},0);
   tl.to(container,{opacity:1,duration:0.3},0.3);
