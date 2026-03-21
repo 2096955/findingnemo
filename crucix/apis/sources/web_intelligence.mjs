@@ -29,6 +29,7 @@ const REGION_COORDS = {
   'Malacca Strait': { lat: 2.5, lon: 101.8 },
   'Suez Canal': { lat: 30, lon: 32.3 },
   'Black Sea': { lat: 43, lon: 34 },
+  'Bosphorus': { lat: 41.1, lon: 29.0 },
   'Mediterranean': { lat: 35, lon: 18 },
   'Caribbean': { lat: 15, lon: -72 },
   'Indian Ocean': { lat: -5, lon: 70 },
@@ -44,6 +45,7 @@ function buildQueries() {
     `Red Sea Houthi shipping attack ${month} ${year}`,
     `Gulf of Guinea piracy alert ${month} ${year}`,
     `Strait of Hormuz military conflict shipping ${year}`,
+    `Black Sea Bosphorus shipping conflict ${month} ${year}`,
     `maritime port closure ${month} ${year}`,
     `South China Sea naval incident ${year}`,
   ];
@@ -134,6 +136,8 @@ function geoTagAlert(title, snippet) {
     'nigeria': REGION_COORDS['Gulf of Guinea'],
     'ukraine': REGION_COORDS['Black Sea'],
     'russia': REGION_COORDS['Black Sea'],
+    'bosphorus': { lat: 41.1, lon: 29.0, region: 'Bosphorus' },
+    'turkey': { lat: 41.1, lon: 29.0, region: 'Bosphorus' },
     'suez': REGION_COORDS['Suez Canal'],
     'panama': { lat: 9, lon: -79.5, region: 'Panama Canal' },
   };
