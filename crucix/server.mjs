@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Crucix Intelligence Engine — Dev Server
-// Serves the Jarvis dashboard, runs sweep cycle, pushes live updates via SSE
+// Whale Strike Mitigation Engine — Dev Server
+// Serves the dashboard, runs sweep cycle, pushes live updates via SSE, voyage planner
 
 import express from 'express';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
@@ -10,10 +10,10 @@ import { exec } from 'child_process';
 import config from './crucix.config.mjs';
 import { getLocale, currentLanguage, getSupportedLocales } from './lib/i18n.mjs';
 import { fullBriefing } from './apis/briefing.mjs';
-import { synthesize, generateIdeas } from './dashboard/inject.mjs';
+import { synthesize } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
-import { generateLLMIdeas } from './lib/llm/ideas.mjs';
+// generateLLMIdeas no longer used — replaced by whale route recommendations
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 
@@ -284,6 +284,129 @@ app.get('/api/locales', (req, res) => {
   });
 });
 
+// API: voyage route planner — LLM generates whale-safe, conflict-aware route
+app.use(express.json());
+
+app.post('/api/route', async (req, res) => {
+  const { origin, destination } = req.body;
+  if (!origin || !destination) {
+    return res.status(400).json({ error: 'origin and destination are required' });
+  }
+  if (!llmProvider?.isConfigured) {
+    return res.status(503).json({ error: 'LLM not configured — route planning requires Gemini' });
+  }
+
+  console.log(`[Crucix] Route request: ${origin} → ${destination}`);
+  const routeStart = Date.now();
+
+  try {
+    const whaleContext = currentData ? buildRouteAvoidanceContext(currentData) : 'No current data available.';
+
+    const systemPrompt = 'You are a maritime route planning specialist. You generate sea routes between ports that avoid whale migration corridors, conflict zones, and other maritime hazards. Return ONLY valid JSON — no markdown, no explanation outside the JSON.';
+
+    const userPrompt = `Plan a sea route from ${origin} to ${destination}.
+
+AVOIDANCE ZONES (current as of ${new Date().toISOString()}):
+
+${whaleContext}
+
+Return a JSON object with this exact structure:
+{
+  "origin": { "name": "Port Name, Country", "lat": number, "lon": number },
+  "destination": { "name": "Port Name, Country", "lat": number, "lon": number },
+  "waypoints": [
+    { "lat": number, "lon": number, "label": "description of this waypoint", "note": "why routed here" }
+  ],
+  "standardRoute": {
+    "distanceNm": number,
+    "estimatedDays": number,
+    "riskLevel": "high" | "moderate" | "low"
+  },
+  "safeRoute": {
+    "distanceNm": number,
+    "estimatedDays": number,
+    "riskLevel": "high" | "moderate" | "low",
+    "distancePenaltyNm": number,
+    "timePenaltyDays": number
+  },
+  "avoidedZones": [
+    { "name": "zone name", "type": "whale" | "conflict", "reason": "brief explanation" }
+  ],
+  "warnings": ["any relevant warnings"],
+  "seasonalNotes": "current seasonal context for whale activity along this route"
+}
+
+Rules:
+- Waypoints must be in navigable ocean/sea (not on land)
+- Include 8-15 waypoints for a realistic route
+- Compare the whale-safe route against the standard great-circle/canal route
+- Factor in current month (${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}) for seasonal whale activity
+- Use major shipping canals (Suez, Panama) when they shorten the route significantly
+- Avoid conflict zones from ACLED data
+- Waypoints should trace a plausible sea path (follow coastlines, pass through straits correctly)`;
+
+    const result = await llmProvider.complete(systemPrompt, userPrompt, {
+      maxTokens: 4096,
+      timeout: 90000,
+    });
+
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return res.status(500).json({ error: 'LLM did not return valid route JSON' });
+    }
+
+    const route = JSON.parse(jsonMatch[0]);
+    route.computedIn = Date.now() - routeStart;
+    route.model = result.model;
+
+    console.log(`[Crucix] Route computed: ${origin} → ${destination} in ${route.computedIn}ms — ${route.waypoints?.length || 0} waypoints`);
+
+    res.json(route);
+  } catch (err) {
+    console.error('[Crucix] Route planning failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function buildRouteAvoidanceContext(data) {
+  const sections = [];
+
+  const activeCorridors = (data.corridors || []).filter(c => c.activity !== 'low');
+  if (activeCorridors.length) {
+    sections.push('WHALE MIGRATION CORRIDORS (avoid or slow to <10 knots):');
+    for (const c of activeCorridors) {
+      const waypoints = c.route.map(r => `${r.lat},${r.lon}`).join(' → ');
+      sections.push(`- ${c.species} (${c.activity}): ${waypoints}`);
+    }
+  }
+
+  const highRisk = (data.riskZones || []).filter(z => z.riskScore >= 6);
+  if (highRisk.length) {
+    sections.push('\nHIGH-RISK WHALE STRIKE ZONES:');
+    for (const z of highRisk) {
+      sections.push(`- ${z.shippingLane} (${z.lat},${z.lon}): risk ${z.riskScore}/10, ${z.species}`);
+    }
+  }
+
+  const conflicts = data.conflictSummary?.zones || [];
+  if (conflicts.length) {
+    sections.push('\nCONFLICT/DANGER ZONES (avoid entirely):');
+    for (const z of conflicts.slice(0, 15)) {
+      sections.push(`- ${z.country}, ${z.location || ''} (${z.lat},${z.lon}): ${z.type}, ${z.fatalities} fatalities`);
+    }
+  }
+
+  const activeAreas = (data.protectedAreas || []).filter(a => a.active);
+  if (activeAreas.length) {
+    sections.push('\nPROTECTED MARINE AREAS (speed restriction zones):');
+    for (const a of activeAreas) {
+      sections.push(`- ${a.name} (${a.lat},${a.lon}): ${a.species}, radius ${a.radiusKm}km`);
+    }
+  }
+
+  return sections.join('\n');
+}
+
 // SSE: live updates
 app.get('/events', (req, res) => {
   res.writeHead(200, {
@@ -334,28 +457,52 @@ async function runSweepCycle() {
     const delta = memory.addRun(synthesized);
     synthesized.delta = delta;
 
-    // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
+    // 5. LLM-powered route recommendations
     if (llmProvider?.isConfigured) {
       try {
-        console.log('[Crucix] Generating LLM trade ideas...');
-        const previousIdeas = memory.getLastRun()?.ideas || [];
-        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
-        if (llmIdeas) {
-          synthesized.ideas = llmIdeas;
-          synthesized.ideasSource = 'llm';
-          console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
-        } else {
-          synthesized.ideas = [];
-          synthesized.ideasSource = 'llm-failed';
+        console.log('[Crucix] Generating LLM route recommendations...');
+        const highRisk = synthesized.riskZones.filter(z => z.riskScore >= 6);
+        const activeCorridors = synthesized.corridors.filter(c => c.activity !== 'low');
+        const prompt = `Current whale strike risk assessment:
+- Global risk: ${synthesized.globalRisk} (${synthesized.riskReason})
+- ${highRisk.length} high-risk zones active
+- ${activeCorridors.length} migration corridors active: ${activeCorridors.map(c => `${c.species} (${c.activity})`).join(', ')}
+- Month: ${new Date().toLocaleString('en-US', { month: 'long' })}
+
+High-risk zones:
+${highRisk.map(z => `- ${z.shippingLane}: risk ${z.riskScore}/10, ${z.species} (${z.activity}), vessel density: ${z.vesselDensity}`).join('\n')}
+
+Generate 3-5 route recommendations as a JSON array. Each object must have:
+- "lane": affected shipping lane name
+- "action": specific recommendation (e.g., "Shift 5nm south", "Reduce speed to 10 knots")
+- "riskReduction": estimated risk reduction percentage (number)
+- "costImpact": brief cost description
+- "species": species being protected
+- "validDates": when this recommendation applies
+- "priority": "critical" | "high" | "moderate"`;
+
+        const result = await llmProvider.complete(
+          'You are a maritime safety analyst specializing in whale strike mitigation. Generate route recommendations in valid JSON array format.',
+          prompt,
+          { maxTokens: 4096, timeout: 60000 }
+        );
+        try {
+          const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+          if (jsonMatch) {
+            synthesized.recommendations = JSON.parse(jsonMatch[0]);
+            synthesized.recommendationsSource = 'llm';
+            console.log(`[Crucix] LLM generated ${synthesized.recommendations.length} route recommendations`);
+          }
+        } catch (parseErr) {
+          console.error('[Crucix] LLM recommendation parse failed:', parseErr.message);
+          synthesized.recommendations = [];
+          synthesized.recommendationsSource = 'llm-failed';
         }
       } catch (llmErr) {
-        console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-        synthesized.ideas = [];
-        synthesized.ideasSource = 'llm-failed';
+        console.error('[Crucix] LLM recommendations failed (non-fatal):', llmErr.message);
+        synthesized.recommendations = [];
+        synthesized.recommendationsSource = 'llm-failed';
       }
-    } else {
-      synthesized.ideas = [];
-      synthesized.ideasSource = 'disabled';
     }
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
@@ -381,7 +528,8 @@ async function runSweepCycle() {
     broadcast({ type: 'update', data: currentData });
 
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
-    console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
+    console.log(`[Crucix] ${(currentData.recommendations || []).length} recommendations (${synthesized.recommendationsSource}) | Risk: ${currentData.globalRisk} (${currentData.riskReason})`);
+    console.log(`[Crucix] ${currentData.corridors?.length || 0} corridors | ${currentData.riskZones?.length || 0} risk zones | ${currentData.sightings?.length || 0} sightings`);
     if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
@@ -399,15 +547,13 @@ async function start() {
 
   console.log(`
   ╔══════════════════════════════════════════════╗
-  ║           CRUCIX INTELLIGENCE ENGINE         ║
-  ║          Local Palantir · 26 Sources         ║
+  ║       WHALE STRIKE MITIGATION ENGINE         ║
+  ║     Route Safety · 4 Sources · Voyage Plan   ║
   ╠══════════════════════════════════════════════╣
   ║  Dashboard:  http://localhost:${port}${' '.repeat(14 - String(port).length)}║
   ║  Health:     http://localhost:${port}/api/health${' '.repeat(4 - String(port).length)}║
   ║  Refresh:    Every ${config.refreshIntervalMinutes} min${' '.repeat(20 - String(config.refreshIntervalMinutes).length)}║
   ║  LLM:        ${(config.llm.provider || 'disabled').padEnd(31)}║
-  ║  Telegram:   ${config.telegram.botToken ? 'enabled' : 'disabled'}${' '.repeat(config.telegram.botToken ? 24 : 23)}║
-  ║  Discord:    ${config.discord?.botToken ? 'enabled' : config.discord?.webhookUrl ? 'webhook only' : 'disabled'}${' '.repeat(config.discord?.botToken ? 24 : config.discord?.webhookUrl ? 20 : 23)}║
   ╚══════════════════════════════════════════════╝
   `);
 
