@@ -484,7 +484,7 @@ Generate 3-5 route recommendations as a JSON array. Each object must have:
         const result = await llmProvider.complete(
           'You are a maritime safety analyst specializing in whale strike mitigation. Generate route recommendations in valid JSON array format.',
           prompt,
-          { maxTokens: 4096, timeout: 60000 }
+          { maxTokens: 4096, timeout: 30000 }
         );
         try {
           const jsonMatch = result.text.match(/\[[\s\S]*\]/);

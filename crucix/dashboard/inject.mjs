@@ -256,10 +256,11 @@ export async function synthesize(data) {
     ? 'ACTIVE MIGRATION'
     : 'LOW SEASON';
 
-  // Fetch global news for ticker
+  // Fetch global news for ticker (with 20s timeout to prevent sweep hang)
   let newsFeed = [];
   try {
-    newsFeed = await fetchAllNews();
+    const newsTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('News fetch timeout (20s)')), 20000));
+    newsFeed = await Promise.race([fetchAllNews(), newsTimeout]);
     console.log(`[Crucix] Fetched ${newsFeed.length} news items for ticker`);
   } catch (e) {
     console.log('[Crucix] News feed fetch failed (non-fatal):', e.message);
