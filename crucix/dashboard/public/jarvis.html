@@ -611,8 +611,6 @@ function renderTopbar(){
 
 // === LEFT RAIL ===
 function renderLeftRail(){
-  const conflictEvents = D.acled?.totalEvents || 0;
-  const conflictFatal = D.acled?.totalFatalities || 0;
   const conflictEvents = D.conflictSummary?.totalEvents || 0;
   const conflictFatal = D.conflictSummary?.totalFatalities || 0;
   const webThreat = D.conflictSummary?.webIntel?.overallThreatLevel || 'UNKNOWN';
