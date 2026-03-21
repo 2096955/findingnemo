@@ -12,6 +12,104 @@ import { createLLMProvider } from '../lib/llm/index.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
+// === RSS News Feed (global news for ticker) ===
+const geoKeywords = {
+  'Ukraine':[49,32],'Russia':[56,38],'China':[35,105],'Iran':[32,53],
+  'Israel':[31.5,35],'Gaza':[31.4,34.4],'Syria':[35,38],'Iraq':[33,44],
+  'Yemen':[15,48],'Lebanon':[34,36],'India':[20,78],'Japan':[36,138],
+  'Korea':[37,127],'Taiwan':[23.5,121],'Philippines':[13,122],
+  'UK':[54,-2],'France':[46,2],'Germany':[51,10],'Turkey':[39,35],
+  'Africa':[0,20],'Nigeria':[10,8],'South Africa':[-30,25],'Egypt':[27,30],
+  'Somalia':[5,46],'Sudan':[13,30],'US':[39,-98],'America':[39,-98],
+  'Brazil':[-14,-51],'Mexico':[23,-102],'Australia':[-25,134],
+  'Singapore':[1.35,103.8],'Indonesia':[-2,118],'Pakistan':[30,70],
+  // Maritime-specific
+  'Suez':[30,32.3],'Panama Canal':[9,-79.5],'Strait of Hormuz':[26.6,56.2],
+  'Malacca':[2.5,101.8],'Bab el-Mandeb':[12.6,43.3],'Gibraltar':[36,−5.5],
+  'Cape of Good Hope':[-34.4,18.5],'Red Sea':[20,38],'South China Sea':[14,114],
+  'Arctic':[75,0],'Antarctic':[-75,0],'whale':[42,-70],'shipping':[40,-74],
+  'maritime':[51.5,-0.1],'piracy':[5,46],'Navy':[38.9,-77],
+};
+
+function geoTagText(text) {
+  if (!text) return null;
+  for (const [keyword, [lat, lon]] of Object.entries(geoKeywords)) {
+    if (text.includes(keyword)) return { lat, lon, region: keyword };
+  }
+  return null;
+}
+
+function sanitizeUrl(raw) {
+  if (!raw) return undefined;
+  try { const u = new URL(raw); return (u.protocol === 'http:' || u.protocol === 'https:') ? u.toString() : undefined; } catch { return undefined; }
+}
+
+async function fetchRSS(url, source) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const xml = await res.text();
+    const items = [];
+    const re = /<item>([\s\S]*?)<\/item>/g;
+    let m;
+    while ((m = re.exec(xml)) !== null) {
+      const b = m[1];
+      const title = (b.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1] || '').trim();
+      const link = sanitizeUrl((b.match(/<link>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/link>/)?.[1] || '').trim());
+      const pubDate = b.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+      if (title && title !== source) items.push({ title, date: pubDate, source, url: link });
+    }
+    return items;
+  } catch (e) {
+    console.log(`[RSS] ${source} failed:`, e.message);
+    return [];
+  }
+}
+
+const RSS_GEO_FALLBACKS = {
+  'SBS Australia': { lat: -35.3, lon: 149.1, region: 'Australia' },
+  'Indian Express': { lat: 28.6, lon: 77.2, region: 'India' },
+  'MercoPress': { lat: -34.9, lon: -56.2, region: 'South America' },
+};
+
+export async function fetchAllNews() {
+  const feeds = [
+    ['http://feeds.bbci.co.uk/news/world/rss.xml', 'BBC'],
+    ['https://rss.nytimes.com/services/xml/rss/nyt/World.xml', 'NYT'],
+    ['https://www.aljazeera.com/xml/rss/all.xml', 'Al Jazeera'],
+    ['https://feeds.npr.org/1001/rss.xml', 'NPR'],
+    ['https://rss.dw.com/rdf/rss-en-all', 'DW'],
+    ['https://www.france24.com/en/rss', 'France 24'],
+    ['https://rss.nytimes.com/services/xml/rss/nyt/AsiaPacific.xml', 'NYT Asia'],
+    ['https://rss.nytimes.com/services/xml/rss/nyt/Africa.xml', 'NYT Africa'],
+    ['http://feeds.bbci.co.uk/news/science_and_environment/rss.xml', 'BBC Science'],
+  ];
+
+  const results = await Promise.allSettled(feeds.map(([url, src]) => fetchRSS(url, src)));
+  const all = results.filter(r => r.status === 'fulfilled').flatMap(r => r.value);
+
+  const seen = new Set();
+  const geoNews = [];
+  for (const item of all) {
+    const key = item.title.substring(0, 40).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const geo = geoTagText(item.title) || RSS_GEO_FALLBACKS[item.source];
+    if (geo) {
+      geoNews.push({
+        headline: item.title.substring(0, 100),
+        source: item.source, type: 'rss',
+        timestamp: item.date, url: item.url,
+        region: geo.region, urgent: false,
+        lat: geo.lat + (Math.random() - 0.5) * 2,
+        lon: geo.lon + (Math.random() - 0.5) * 2,
+      });
+    }
+  }
+
+  geoNews.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  return geoNews.slice(0, 30);
+}
+
 // === Synthesize raw sweep data into whale dashboard format ===
 export async function synthesize(data) {
   const whaleData = data.sources.Whales || {};
@@ -130,6 +228,21 @@ export async function synthesize(data) {
     ? 'ACTIVE MIGRATION'
     : 'LOW SEASON';
 
+  // Fetch global news for ticker
+  let newsFeed = [];
+  try {
+    newsFeed = await fetchAllNews();
+    console.log(`[Crucix] Fetched ${newsFeed.length} news items for ticker`);
+  } catch (e) {
+    console.log('[Crucix] News feed fetch failed (non-fatal):', e.message);
+  }
+
+  // Also use as the news array (for map markers)
+  const news = newsFeed.filter(n => n.lat && n.lon).map(n => ({
+    title: n.headline, source: n.source, date: n.timestamp, url: n.url,
+    lat: n.lat, lon: n.lon, region: n.region,
+  }));
+
   const health = Object.entries(data.sources).map(([name, src]) => ({
     n: name, err: Boolean(src.error), stale: Boolean(src.stale),
   }));
@@ -166,13 +279,13 @@ export async function synthesize(data) {
     // --- Original Crucix compat (safe stubs so jarvis.html doesn't crash) ---
     air: [],
     thermal: [],
-    sdr: { total: 0, online: 0, receivers: [] },
+    sdr: { total: 0, online: 0, receivers: [], zones: [] },
     nuke: [],
     fred: [],
     tg: { posts: 0, urgent: [], topPosts: [], channels: [] },
     who: [],
-    news: [],
-    newsFeed: [],
+    news,
+    newsFeed,
     chokepoints,
     acled: acledCompat,
     treasury: { totalDebt: '0' },
