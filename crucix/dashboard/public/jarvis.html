@@ -761,7 +761,10 @@ function initGlobe(){
     .arcAltitudeAutoScale(0.3)
     .arcLabel(d => d.label || '')
     // Rings layer (pulsing conflict events)
-    .ringColor(d => t => `rgba(255,120,80,${1-t})`)
+    .ringColor(d => t => {
+      if(d.speed && d.speed < 1) return `rgba(68,204,255,${0.6*(1-t)})`; // protected areas = cyan
+      return `rgba(255,120,80,${1-t})`; // conflicts = orange
+    })
     .ringMaxRadius(d => d.maxR || 3)
     .ringPropagationSpeed(d => d.speed || 2)
     .ringRepeatPeriod(d => d.period || 800)
@@ -979,8 +982,8 @@ function plotMarkers(){
   });
 
   // Set points on globe
-  globe.pointsData(points);
-  globe.labelsData(labels);
+  // Points and labels are set after all layers below (whale, conflict, etc.)
+  // globe.pointsData(points) and globe.labelsData(labels) moved to after ringsData
 
   // === ACLED CONFLICT EVENTS (pulsing rings) ===
   const conflictRings = (D.acled?.deadliestEvents || []).filter(e => e.lat && e.lon).map(e => {
@@ -994,7 +997,135 @@ function plotMarkers(){
       popText: `${e.fatalities} fatalities<br>${e.location}, ${e.country}<br>Date: ${e.date}`
     };
   });
+
+  // === CONFLICT ZONES from web intelligence (pulsing rings) ===
+  const conflictZones = D.conflictSummary?.zones || [];
+  conflictZones.forEach(z => {
+    if(!z.lat || !z.lon) return;
+    const isCritical = z.severity === 'CRITICAL' || z.severity === 'HIGH';
+    conflictRings.push({
+      lat: z.lat, lng: z.lon,
+      maxR: isCritical ? 5 : 3,
+      speed: isCritical ? 2.5 : 1.5,
+      period: isCritical ? 500 : 800,
+    });
+    points.push({
+      lat: z.lat, lng: z.lon, size: isCritical ? 0.5 : 0.35, alt: 0.02,
+      color: isCritical ? 'rgba(255,120,80,0.9)' : 'rgba(255,160,100,0.7)',
+      type: 'conflict', priority: 1,
+      popHead: (z.severity||'CONFLICT')+': '+(z.type||'armed_conflict'),
+      popMeta: z.sourceUrl ? 'Source: '+z.sourceUrl.substring(0,50) : 'Web Intelligence',
+      popText: `${z.title||z.location||''}<br>${z.summary||''}<br>Region: ${z.country||z.region||''}`
+    });
+    labels.push({lat:z.lat, lng:z.lon+2, text:(z.region||z.country||'Conflict').substring(0,20), size:0.35, color:'rgba(255,120,80,0.7)'});
+  });
+
+  // === WHALE MIGRATION CORRIDORS (arcs — colored by activity) ===
+  (D.corridors||[]).filter(c=>c.activity!=='low').forEach(c=>{
+    const route = c.route||[];
+    if(route.length<2) return;
+    const color = c.activity==='calving' ? ['rgba(255,95,99,0.6)','rgba(255,95,99,0.15)']
+      : c.activity==='feeding' ? ['rgba(68,204,255,0.6)','rgba(68,204,255,0.15)']
+      : ['rgba(255,184,76,0.6)','rgba(255,184,76,0.15)'];
+    // Draw arcs between consecutive waypoints
+    for(let i=0; i<route.length-1; i++){
+      arcs.push({
+        startLat: route[i].lat, startLng: route[i].lon,
+        endLat: route[i+1].lat, endLng: route[i+1].lon,
+        color, stroke: 0.8,
+        label: `${c.species} — ${c.activity}`
+      });
+    }
+    // Waypoint dots
+    route.forEach(pt=>{
+      points.push({
+        lat: pt.lat, lng: pt.lon, size: 0.2, alt: 0.012,
+        color: c.activity==='calving'?'rgba(255,95,99,0.8)':c.activity==='feeding'?'rgba(68,204,255,0.8)':'rgba(255,184,76,0.8)',
+        type: 'whale-corridor', priority: 1,
+        popHead: c.species, popMeta: `~${(c.estimatedPopulation||0).toLocaleString()} remaining`,
+        popText: `${pt.label}<br>Activity: ${c.activity}<br>Status: ${c.status}`
+      });
+    });
+  });
+
+  // === SHIPPING LANES (arcs — colored by risk) ===
+  (D.shippingLanes||[]).forEach(lane=>{
+    const laneColor = lane.risk==='critical' ? ['rgba(255,95,99,0.4)','rgba(255,95,99,0.1)']
+      : lane.risk==='high' ? ['rgba(255,184,76,0.35)','rgba(255,184,76,0.08)']
+      : ['rgba(100,240,200,0.3)','rgba(100,240,200,0.06)'];
+    lane.segments.forEach(seg=>{
+      arcs.push({
+        startLat: seg.from.lat, startLng: seg.from.lon,
+        endLat: seg.to.lat, endLng: seg.to.lon,
+        color: laneColor, stroke: 0.5,
+        label: `${lane.name} — ${lane.risk} risk`
+      });
+    });
+  });
+
+  // === RISK ZONES (whale strike hotspots) ===
+  (D.riskZones||[]).forEach(z=>{
+    const color = z.riskScore>=8?'rgba(255,95,99,0.8)':z.riskScore>=6?'rgba(255,184,76,0.7)':'rgba(100,240,200,0.6)';
+    points.push({
+      lat: z.lat, lng: z.lon, size: 0.25+z.riskScore/30, alt: 0.01,
+      color, type: 'risk-zone', priority: 2,
+      popHead: `Risk: ${z.riskScore}/10`, popMeta: `Vessel density: ${z.vesselDensity}`,
+      popText: `${z.shippingLane}<br>${z.species} (${z.activity})`
+    });
+  });
+
+  // === PROTECTED AREAS (pulsing rings — cyan) ===
+  (D.protectedAreas||[]).filter(a=>a.active).forEach(a=>{
+    conflictRings.push({
+      lat: a.lat, lng: a.lon,
+      maxR: Math.max(2, a.radiusKm/30),
+      speed: 0.8,
+      period: 1500,
+    });
+    points.push({
+      lat: a.lat, lng: a.lon, size: 0.2, alt: 0.008,
+      color: 'rgba(68,204,255,0.6)', type: 'protected', priority: 2,
+      popHead: a.name, popMeta: a.type,
+      popText: `Species: ${a.species}<br>Radius: ${a.radiusKm}km`
+    });
+  });
+
+  // === WHALE SIGHTINGS (small cyan dots) ===
+  (D.sightings||[]).forEach(s=>{
+    if(!s.lat||!s.lon) return;
+    points.push({
+      lat: s.lat, lng: s.lon, size: 0.1, alt: 0.005,
+      color: 'rgba(68,204,255,0.5)', type: 'sighting', priority: 3,
+      popHead: s.species||'Cetacean sighting', popMeta: s.date||'',
+      popText: `Dataset: ${s.dataset||'OBIS'}`
+    });
+  });
+
+  // === DEMO SHIPPING ROUTES (arcs — white dashed) ===
+  const demoRoutes = [
+    { name:'New York → Rotterdam', startLat:40.5, startLng:-74.0, endLat:51.9, endLng:4.0 },
+    { name:'Los Angeles → Tokyo', startLat:33.7, startLng:-118.3, endLat:35.5, endLng:139.7 },
+    { name:'Panama → Miami', startLat:9.0, startLng:-79.5, endLat:25.7, endLng:-80.2 },
+    { name:'Suez → Singapore', startLat:30.0, startLng:32.3, endLat:1.3, endLng:103.8 },
+    { name:'Cape Town → Santos', startLat:-33.9, startLng:18.4, endLat:-23.9, endLng:-43.2 },
+    { name:'Shanghai → San Francisco', startLat:31.2, startLng:121.5, endLat:37.8, endLng:-122.4 },
+    { name:'Halifax → Boston', startLat:44.6, startLng:-63.6, endLat:42.4, endLng:-71.0 },
+  ];
+  demoRoutes.forEach(r=>{
+    arcs.push({
+      startLat: r.startLat, startLng: r.startLng,
+      endLat: r.endLat, endLng: r.endLng,
+      color: ['rgba(255,255,255,0.3)','rgba(255,255,255,0.08)'],
+      stroke: 0.4,
+      label: r.name
+    });
+  });
+
   globe.ringsData(conflictRings);
+
+  // Set all data layers on globe (after all layers have been populated)
+  globe.pointsData(points);
+  globe.labelsData(labels);
 
   // === FLIGHT CORRIDORS (3D arcs) ===
   const arcs = [];
