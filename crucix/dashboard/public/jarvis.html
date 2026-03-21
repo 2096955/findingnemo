@@ -685,7 +685,7 @@ function bindMapLifecycleEvents(){
 function renderMapLegend(){
   document.getElementById('mapLegend').innerHTML=
     [{c:'#44ccff',l:'Feeding Corridor'},{c:'#ff5f63',l:'Calving Corridor'},{c:'#ffb84c',l:'Migrating'},{c:'rgba(255,120,80,0.8)',l:'Conflict Zone'},
-     {c:'rgba(68,204,255,0.3)',l:'Protected Area'},{c:'#b388ff',l:'Chokepoint'},{c:'#ff9800',l:'Weather Alert'},{c:'#00e676',l:'Planned Route'},{c:'rgba(255,95,99,0.5)',l:'Shipping Lane (risk)'}]
+     {c:'rgba(68,204,255,0.3)',l:'Protected Area'},{c:'rgba(255,255,255,0.4)',l:'Shipping Route'},{c:'#b388ff',l:'Chokepoint'},{c:'#00e676',l:'Planned Route'}]
     .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
 }
 
@@ -1309,6 +1309,73 @@ function plotFlatMarkers(){
   (D.sightings||[]).forEach(s=>{
     if(!s.lat||!s.lon) return;
     addPt(s.lat,s.lon,2,'rgba(68,204,255,0.5)','none',null,3);
+  });
+
+  // === DEMO SHIPPING ROUTES ===
+  // Major commercial routes that intersect whale corridors, conflict zones, and protected areas
+  const demoRoutes = [
+    // 1. US East Coast — crosses NARW calving corridor + Stellwagen Bank protected area
+    { name:'New York → Rotterdam', feature:'Calving Corridor / Protected Area',
+      waypoints:[[-74.0,40.5],[-72.0,40.0],[-69.5,41.0],[-67.0,42.0],[-60.0,44.0],[-42.0,48.0],[-10.0,51.0],[4.0,51.9]],
+      color:'rgba(255,255,255,0.25)', featureColor:'#ff5f63' },
+    // 2. US West Coast — crosses Blue Whale feeding corridor + Channel Islands
+    { name:'Los Angeles → Tokyo', feature:'Feeding Corridor',
+      waypoints:[[-118.3,33.7],[-122.0,35.0],[-130.0,38.0],[-145.0,42.0],[-160.0,42.0],[-175.0,40.0],[170.0,38.0],[139.7,35.5]],
+      color:'rgba(255,255,255,0.25)', featureColor:'#44ccff' },
+    // 3. Panama → US East — crosses Humpback migrating route
+    { name:'Panama → Miami', feature:'Migrating Corridor',
+      waypoints:[[-79.5,9.0],[-80.0,12.0],[-81.0,18.0],[-80.5,22.0],[-80.2,25.7]],
+      color:'rgba(255,255,255,0.25)', featureColor:'#ffb84c' },
+    // 4. Suez → Singapore — passes Horn of Africa conflict zone + Bab el-Mandeb
+    { name:'Suez → Singapore', feature:'Conflict Zone',
+      waypoints:[[32.3,30.0],[34.0,28.0],[40.0,15.0],[43.5,12.5],[48.0,11.0],[55.0,12.0],[65.0,15.0],[75.0,10.0],[85.0,5.0],[95.0,3.0],[103.8,1.3]],
+      color:'rgba(255,255,255,0.25)', featureColor:'rgba(255,120,80,0.8)' },
+    // 5. Cape Town → Santos — crosses Southern Right Whale corridor
+    { name:'Cape Town → Santos', feature:'Calving Corridor (Southern)',
+      waypoints:[[18.4,-33.9],[10.0,-30.0],[0.0,-25.0],[-15.0,-22.0],[-30.0,-22.0],[-43.2,-23.9]],
+      color:'rgba(255,255,255,0.25)', featureColor:'#ff5f63' },
+    // 6. Hawaii inter-island — crosses Humpback protected area + breeding grounds
+    { name:'Honolulu → Maui', feature:'Protected Area (Humpback NMS)',
+      waypoints:[[-157.9,21.3],[-157.0,21.0],[-156.5,20.9]],
+      color:'rgba(255,255,255,0.30)', featureColor:'rgba(68,204,255,0.6)' },
+    // 7. San Francisco approach — crosses Blue Whale + Gray Whale feeding
+    { name:'Shanghai → San Francisco', feature:'Feeding Corridor (Blue/Gray)',
+      waypoints:[[121.5,31.2],[130.0,35.0],[150.0,40.0],[170.0,43.0],[-170.0,45.0],[-150.0,43.0],[-135.0,40.0],[-122.4,37.8]],
+      color:'rgba(255,255,255,0.25)', featureColor:'#44ccff' },
+    // 8. Boston approach — crosses NARW calving + Great South Channel SMA
+    { name:'Halifax → Boston', feature:'Protected Area (SMA)',
+      waypoints:[[-63.6,44.6],[-66.0,43.5],[-68.0,42.5],[-70.0,42.3],[-71.0,42.4]],
+      color:'rgba(255,255,255,0.30)', featureColor:'rgba(68,204,255,0.6)' },
+  ];
+
+  const routeG = flatG.append('g').attr('class','demo-routes-layer');
+  demoRoutes.forEach(route=>{
+    const coords = route.waypoints;
+    // Use great-circle interpolation for longer routes
+    const interpCoords = [];
+    for(let i=0;i<coords.length-1;i++){
+      const from=coords[i], to=coords[i+1];
+      const interp=d3.geoInterpolate(from,to);
+      const steps=Math.max(8,Math.round(d3.geoDistance(from,to)*30));
+      for(let s=0;s<=steps;s++) interpCoords.push(interp(s/steps));
+    }
+    const feat={type:'Feature',geometry:{type:'LineString',coordinates:interpCoords}};
+    // Ship route line (subtle white)
+    routeG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',route.color).attr('stroke-width',1.2).attr('stroke-dasharray','6,4');
+    // Feature highlight — thicker colored overlay on the same path
+    routeG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',route.featureColor).attr('stroke-width',0.8).attr('opacity',0.35);
+    // Label at midpoint
+    const mid=interpCoords[Math.floor(interpCoords.length/2)];
+    const[mx,my]=proj(mid);
+    if(mx&&my){
+      routeG.append('text').attr('x',mx).attr('y',my-6).attr('fill','rgba(255,255,255,0.4)').attr('font-size','7px').attr('font-family','var(--mono)').attr('text-anchor','middle').text(route.name);
+      routeG.append('text').attr('x',mx).attr('y',my+5).attr('fill',route.featureColor).attr('font-size','6px').attr('font-family','var(--mono)').attr('text-anchor','middle').attr('opacity',0.7).text(route.feature);
+    }
+    // Start/end dots
+    const[sx,sy]=proj(coords[0]);
+    const[ex,ey]=proj(coords[coords.length-1]);
+    if(sx&&sy) routeG.append('circle').attr('cx',sx).attr('cy',sy).attr('r',2.5).attr('fill','rgba(255,255,255,0.5)');
+    if(ex&&ey) routeG.append('circle').attr('cx',ex).attr('cy',ey).attr('r',2.5).attr('fill','rgba(255,255,255,0.5)');
   });
 
   // Flight corridors (kept — still relevant for SAR/coast guard flights)
