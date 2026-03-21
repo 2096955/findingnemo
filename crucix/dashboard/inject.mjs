@@ -116,6 +116,7 @@ export async function synthesize(data) {
   const maritimeData = data.sources.Maritime || {};
   const noaaData = data.sources.NOAA || {};
   const acledData = data.sources.ACLED || {};
+  const webIntelData = data.sources.WebIntelligence || {};
 
   // ACLED conflict zones — used for voyage planner avoidance
   const conflictZones = [];
@@ -132,11 +133,38 @@ export async function synthesize(data) {
       location: evt.location,
     });
   }
+
+  // WebIntelligence alerts (firecrawl) — merge into conflict zones
+  const webAlerts = webIntelData.alerts || [];
+  for (const alert of webAlerts) {
+    if (alert.lat != null && alert.lon != null) {
+      conflictZones.push({
+        lat: alert.lat,
+        lon: alert.lon,
+        type: alert.category || 'conflict',
+        country: alert.region || 'Unknown',
+        fatalities: 0,
+        date: webIntelData.timestamp,
+        location: alert.region || '',
+        severity: alert.severity,
+        title: alert.title,
+        summary: alert.summary,
+        sourceUrl: alert.sourceUrl,
+        source: 'firecrawl',
+      });
+    }
+  }
+
   const conflictSummary = {
-    totalEvents: acledData.totalEvents || 0,
+    totalEvents: (acledData.totalEvents || 0) + webAlerts.length,
     totalFatalities: acledData.totalFatalities || 0,
     byRegion: acledData.byRegion || {},
     zones: conflictZones,
+    webIntel: {
+      totalAlerts: webAlerts.length,
+      overallThreatLevel: webIntelData.overallThreatLevel || 'UNKNOWN',
+      alerts: webAlerts,
+    },
   };
 
   const corridors = (whaleData.corridors || []).map(c => ({

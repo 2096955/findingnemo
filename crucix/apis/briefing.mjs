@@ -10,6 +10,7 @@ import { briefing as whales } from './sources/whales.mjs';
 import { briefing as ships } from './sources/ships.mjs';
 import { briefing as noaa } from './sources/noaa.mjs';
 import { briefing as acled } from './sources/acled.mjs';
+import { briefing as webIntel } from './sources/web_intelligence.mjs';
 
 const SOURCE_TIMEOUT_MS = 30_000;
 
@@ -31,7 +32,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting whale intelligence sweep — 4 sources...');
+  console.error('[Crucix] Starting whale intelligence sweep — 5 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -39,6 +40,7 @@ export async function fullBriefing() {
     runSource('Maritime', ships),
     runSource('NOAA', noaa),
     runSource('ACLED', acled),
+    runSource('WebIntelligence', webIntel),
   ];
 
   const results = await Promise.allSettled(allPromises);
