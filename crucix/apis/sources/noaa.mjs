@@ -29,9 +29,9 @@ export async function getSevereAlerts() {
   return getActiveAlerts({ severity: 'Extreme,Severe' });
 }
 
-// Briefing — severe weather events that could impact markets/supply chains
+// Briefing — active weather events (all severities — 370+ marine alerts are common)
 export async function briefing() {
-  const alerts = await getSevereAlerts();
+  const alerts = await getActiveAlerts({ limit: 50 });
   const features = alerts?.features || [];
 
   // Categorize by impact type

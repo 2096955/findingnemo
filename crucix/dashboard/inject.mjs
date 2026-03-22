@@ -117,6 +117,8 @@ export async function synthesize(data) {
   const noaaData = data.sources.NOAA || {};
   const acledData = data.sources.ACLED || {};
   const webIntelData = data.sources.WebIntelligence || {};
+  const gdeltData = data.sources.GDELT || {};
+  const eiaData = data.sources.EIA || {};
 
   // ACLED conflict zones — used for voyage planner avoidance
   const conflictZones = [];
@@ -325,10 +327,16 @@ export async function synthesize(data) {
     bls: [],
     gscpi: null,
     markets: {},
-    noaa: { alerts: [] },
+    noaa: { alerts: weatherAlerts.alerts },
     epa: { stations: [] },
-    gdelt: { geoPoints: [] },
-    energy: {},
+    gdelt: { geoPoints: gdeltData.geoPoints || [], totalArticles: gdeltData.totalArticles || 0 },
+    energy: {
+      wti: eiaData.oilPrices?.wti?.value || null,
+      brent: eiaData.oilPrices?.brent?.value || null,
+      spread: eiaData.oilPrices?.spread || null,
+      natgas: eiaData.gasPrice?.value || null,
+      signals: eiaData.signals || [],
+    },
     delta: null,
   };
 
