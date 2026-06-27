@@ -1,0 +1,6 @@
+# Real IWC data — never commit Alice's extracts or production records
+raw/
+private/
+*.real.md
+
+# Sample OKF bundle is tracked intentionally (okf-bundle/)

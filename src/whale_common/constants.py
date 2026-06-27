@@ -1,5 +1,23 @@
 """Whale Agent constants — API URLs, port mappings, domain routing."""
 
+import os
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_IWC_OKF_BUNDLE = _REPO_ROOT / "data" / "iwc" / "okf-bundle"
+
+
+def _resolve_repo_path(value: str | Path) -> str:
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = _REPO_ROOT / path
+    return str(path.resolve())
+
+
+IWC_OKF_BUNDLE = _resolve_repo_path(
+    os.environ.get("IWC_OKF_BUNDLE", _DEFAULT_IWC_OKF_BUNDLE)
+)
+
 # MCP server ports
 MCP_PORTS = {
     "noaa": 9001,
