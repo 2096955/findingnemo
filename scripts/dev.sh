@@ -213,7 +213,7 @@ if ! $SKIP_MCP; then
   cd "$PROJECT_DIR/src"
 
   MCP_SERVERS=(
-    noaa whale_alert marine_cadastre open_meteo gbif iucn
+    noaa whale_alert marine_cadastre open_meteo gbif iucn searxng
   )
 
   for srv in "${MCP_SERVERS[@]}"; do
@@ -224,9 +224,9 @@ if ! $SKIP_MCP; then
   ok "Started ${#MCP_SERVERS[@]} MCP servers (logs in logs/)"
 
   # Health check MCP ports
-  info "Waiting for MCP servers (ports 9001-9006)..."
+  info "Waiting for MCP servers (ports 9001-9007)..."
   MCP_READY=true
-  for port in 9001 9002 9003 9004 9005 9006; do
+  for port in 9001 9002 9003 9004 9005 9006 9007; do
     PORT_UP=false
     for i in $(seq 1 15); do
       EXIT_CODE=$(curl -sf --max-time 2 "http://localhost:$port/sse" >/dev/null 2>&1; echo $?)
@@ -312,7 +312,7 @@ if ! $NO_FRONTEND; then
   echo -e "  Frontend UI:  ${CYAN}http://localhost:3000${NC}"
 fi
 if ! $SKIP_MCP; then
-  echo -e "  MCP Servers:  ${CYAN}ports 9001-9006${NC} (logs in logs/)"
+  echo -e "  MCP Servers:  ${CYAN}ports 9001-9007${NC} (logs in logs/)"
 fi
 echo -e "  Redis:        ${CYAN}localhost:6379${NC}"
 echo ""

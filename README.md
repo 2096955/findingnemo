@@ -130,10 +130,11 @@ All data follows the [Project Resilience decision framework](https://project-res
     └─────┬─────────────────────────────┘
           │
     ┌─────┴─────────────────────────────┐
-    │         6 MCP Servers (Data)       │
+    │         7 MCP Servers (Data)       │
     │  NOAA (9001)      Open-Meteo(9004)│
     │  Whale Alert(9002) GBIF (9005)    │
     │  Marine Cadastre(9003) IUCN(9006) │
+    │  SearXNG (9007)                   │
     └───────────────────────────────────┘
 ```
 
@@ -238,6 +239,9 @@ Example queries:
 | [Open-Meteo Marine](https://marine-api.open-meteo.com) | `open_meteo` | 9004 | No |
 | [GBIF Occurrences](https://gbif.org) | `gbif` | 9005 | No (optional) |
 | [IUCN Red List](https://apiv3.iucnredlist.org) | `iucn` | 9006 | Yes |
+| [SearXNG Web Search](https://docs.searxng.org) | `searxng` | 9007 | No (self-hosted) |
+
+Web intelligence (orchestrator + Crucix dashboard) uses `SEARXNG_URL` when set, falling back to Brave/Tavily/Firecrawl only if SearXNG is unavailable. Start a local instance with `docker compose -f docker-compose.searxng.yml up -d`.
 
 Additional references:
 - [Whale Safe Tool](https://whalesafe.com/whale-safe-tool/)

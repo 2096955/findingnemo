@@ -35,6 +35,7 @@ Thumbs.db
 data/*.csv
 data/*.parquet
 data/*.json
+data/*.db
 !data/sample_ais_tracks.json
 !data/seed_prompts.json
 !data/.gitkeep

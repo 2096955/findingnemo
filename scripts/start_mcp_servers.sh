@@ -15,6 +15,7 @@ python -m mcp_servers.marine_cadastre.server &
 python -m mcp_servers.open_meteo.server &
 python -m mcp_servers.gbif.server &
 python -m mcp_servers.iucn.server &
+python -m mcp_servers.searxng.server &
 
-echo "All 6 MCP servers started (ports 9001-9006)"
+echo "All 7 MCP servers started (ports 9001-9007)"
 wait

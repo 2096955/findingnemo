@@ -1,8 +1,9 @@
-// Web Intelligence — conflict zones + maritime threats via Tavily (primary) / Firecrawl (fallback)
-// Always returns hardcoded baseline zones even if both APIs fail
+// Web Intelligence — conflict zones + maritime threats via SearXNG (primary)
+// with Tavily / Firecrawl fallbacks. Always returns hardcoded baseline zones.
 
 import '../utils/env.mjs';
 
+const SEARXNG_URL = process.env.SEARXNG_URL || '';
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY || '';
 const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY || '';
 const FIRECRAWL_BASE = 'https://api.firecrawl.dev/v1';
@@ -105,7 +106,52 @@ function buildQueries() {
   ];
 }
 
-// === Tavily Search (primary) ===
+// === SearXNG Search (primary — self-hosted, no API key) ===
+function parseSearxngUrls() {
+  if (!SEARXNG_URL) return [];
+  return SEARXNG_URL.split(';').map(u => u.trim().replace(/\/$/, '')).filter(Boolean);
+}
+
+async function searchSearxng(query, maxResults = 3) {
+  const instances = parseSearxngUrls();
+  if (!instances.length) return [];
+
+  for (const baseUrl of instances) {
+    try {
+      const params = new URLSearchParams({
+        q: query,
+        format: 'json',
+        language: 'all',
+      });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+
+      const res = await fetch(`${baseUrl}/search?${params}`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        console.log(`[WebIntel] SearXNG search failed on ${baseUrl}: HTTP ${res.status}`);
+        continue;
+      }
+
+      const json = await res.json();
+      const results = (json.results || []).slice(0, maxResults).map(r => ({
+        title: r.title || '',
+        url: r.url || '',
+        snippet: (r.content || r.snippet || '').substring(0, 300),
+      }));
+      if (results.length) return results;
+    } catch (e) {
+      console.log(`[WebIntel] SearXNG error on ${baseUrl}: ${e.message}`);
+    }
+  }
+  return [];
+}
+
+// === Tavily Search (fallback) ===
 async function searchTavily(query, maxResults = 3) {
   if (!TAVILY_API_KEY) return [];
 
@@ -182,14 +228,15 @@ async function searchFirecrawl(query, maxResults = 3) {
   }
 }
 
-// === Search with fallback chain: Tavily → Firecrawl ===
+// === Search with fallback chain: SearXNG → Tavily → Firecrawl ===
 async function searchWeb(query, maxResults = 3) {
-  // Try Tavily first
+  const searxngResults = await searchSearxng(query, maxResults);
+  if (searxngResults.length > 0) return searxngResults;
+
   if (TAVILY_API_KEY) {
     const results = await searchTavily(query, maxResults);
     if (results.length > 0) return results;
   }
-  // Fallback to Firecrawl
   if (FIRECRAWL_API_KEY) {
     return searchFirecrawl(query, maxResults);
   }
@@ -256,7 +303,10 @@ function geoTagAlert(title, snippet) {
 }
 
 export async function briefing() {
-  const provider = TAVILY_API_KEY ? 'Tavily' : FIRECRAWL_API_KEY ? 'Firecrawl' : 'none';
+  const provider = SEARXNG_URL ? 'SearXNG'
+    : TAVILY_API_KEY ? 'Tavily'
+    : FIRECRAWL_API_KEY ? 'Firecrawl'
+    : 'none';
   const queries = buildQueries();
 
   // Always start with baseline zones

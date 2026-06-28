@@ -197,6 +197,7 @@ apps:
           component_module: whale_tools.web_intelligence
           component_base_path: src
           tool_config:
+            searxng_url: ${SEARXNG_URL,}
             brave_api_key: ${BRAVE_SEARCH_API_KEY,}
 
         # -- Step 3: COLLECT (shared state) --

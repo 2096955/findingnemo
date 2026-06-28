@@ -2,21 +2,21 @@
 
 Searches the web for current events that could affect route safety: piracy,
 armed conflicts, weather disasters, port closures, sanctions, and
-environmental hazards.  Uses DuckDuckGo (no API key) as the primary search
-engine, with an optional Brave Search fallback.
+environmental hazards.  Uses self-hosted SearXNG when configured, then falls
+back to Firecrawl, Brave, or DuckDuckGo.
 """
 
 import asyncio
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional
 
 import httpx
 from google.adk.tools import ToolContext
 from google.genai import types as adk_types
-
 from solace_agent_mesh.agent.tools.dynamic_tool import DynamicTool
+
+from whale_common.searxng import get_searxng_url, search_searxng
 
 log = logging.getLogger(__name__)
 
@@ -33,30 +33,72 @@ THREAT_CATEGORIES = [
 
 _CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "piracy": [
-        "piracy", "pirates", "hijack", "armed robbery at sea",
-        "maritime security incident", "boarding", "pirate attack",
+        "piracy",
+        "pirates",
+        "hijack",
+        "armed robbery at sea",
+        "maritime security incident",
+        "boarding",
+        "pirate attack",
     ],
     "armed_conflict": [
-        "military", "war", "missile", "attack", "houthi", "conflict zone",
-        "naval strike", "drone strike", "warship", "blockade", "airstrike",
+        "military",
+        "war",
+        "missile",
+        "attack",
+        "houthi",
+        "conflict zone",
+        "naval strike",
+        "drone strike",
+        "warship",
+        "blockade",
+        "airstrike",
     ],
     "weather_disaster": [
-        "cyclone", "typhoon", "hurricane", "tsunami", "storm surge",
-        "tropical storm", "severe weather", "flooding", "monsoon",
+        "cyclone",
+        "typhoon",
+        "hurricane",
+        "tsunami",
+        "storm surge",
+        "tropical storm",
+        "severe weather",
+        "flooding",
+        "monsoon",
     ],
     "port_closure": [
-        "port closed", "port closure", "terminal shutdown", "port blockade",
-        "port congestion", "dock strike", "labour strike", "harbor closed",
-        "strait closed", "strait closure", "waterway closed", "waterway closure",
-        "shipping lane closed", "canal closed", "passage blocked",
+        "port closed",
+        "port closure",
+        "terminal shutdown",
+        "port blockade",
+        "port congestion",
+        "dock strike",
+        "labour strike",
+        "harbor closed",
+        "strait closed",
+        "strait closure",
+        "waterway closed",
+        "waterway closure",
+        "shipping lane closed",
+        "canal closed",
+        "passage blocked",
     ],
     "sanctions": [
-        "sanctions", "embargo", "restricted vessels", "banned",
-        "trade restriction", "export ban", "import ban",
+        "sanctions",
+        "embargo",
+        "restricted vessels",
+        "banned",
+        "trade restriction",
+        "export ban",
+        "import ban",
     ],
     "environmental_hazard": [
-        "oil spill", "contamination", "marine pollution", "algal bloom",
-        "chemical spill", "toxic", "ecological disaster",
+        "oil spill",
+        "contamination",
+        "marine pollution",
+        "algal bloom",
+        "chemical spill",
+        "toxic",
+        "ecological disaster",
     ],
 }
 
@@ -69,6 +111,7 @@ _BOTTLENECK_STRAITS = {"hormuz", "strait of hormuz"}
 # ---------------------------------------------------------------------------
 # Query generation
 # ---------------------------------------------------------------------------
+
 
 def _build_queries(
     route_description: str,
@@ -87,10 +130,22 @@ def _build_queries(
     if not region_list:
         # Simple extraction: split by common prepositions
         for word in [
-            "Hormuz", "Suez", "Malacca", "Bab el-Mandeb", "Panama",
-            "Cape Horn", "Good Hope", "Gulf of Aden", "Red Sea",
-            "Arabian Sea", "Indian Ocean", "South China Sea",
-            "Mediterranean", "Caribbean", "Pacific", "Atlantic",
+            "Hormuz",
+            "Suez",
+            "Malacca",
+            "Bab el-Mandeb",
+            "Panama",
+            "Cape Horn",
+            "Good Hope",
+            "Gulf of Aden",
+            "Red Sea",
+            "Arabian Sea",
+            "Indian Ocean",
+            "South China Sea",
+            "Mediterranean",
+            "Caribbean",
+            "Pacific",
+            "Atlantic",
         ]:
             if word.lower() in route_description.lower():
                 region_list.append(word)
@@ -98,9 +153,7 @@ def _build_queries(
     queries = []
 
     # General route disruption query
-    queries.append(
-        f"{route_description} shipping route disruption {month_name} {year}"
-    )
+    queries.append(f"{route_description} shipping route disruption {month_name} {year}")
 
     # Category-specific queries per region
     cat_labels = {
@@ -119,9 +172,7 @@ def _build_queries(
 
     # Always include a general maritime safety query
     if region_list:
-        queries.append(
-            f"maritime safety advisory {' '.join(region_list[:2])} {year}"
-        )
+        queries.append(f"maritime safety advisory {' '.join(region_list[:2])} {year}")
 
     # Deduplicate while preserving order
     seen: set[str] = set()
@@ -136,8 +187,9 @@ def _build_queries(
 
 
 # ---------------------------------------------------------------------------
-# Search engines (priority: Firecrawl → Brave → DuckDuckGo)
+# Search engines (priority: SearXNG → Firecrawl → Brave → DuckDuckGo)
 # ---------------------------------------------------------------------------
+
 
 def _search_firecrawl(query: str, max_results: int = 5) -> list[dict]:
     """Search via Firecrawl (corporate-proxy-friendly).  Returns list of
@@ -155,7 +207,13 @@ def _search_firecrawl(query: str, max_results: int = 5) -> list[dict]:
     try:
         client = FirecrawlApp(api_key=firecrawl_key)
         raw = client.search(query, params={"limit": max_results})
-        data = raw.get("data", []) if isinstance(raw, dict) else raw if isinstance(raw, list) else []
+        data = (
+            raw.get("data", [])
+            if isinstance(raw, dict)
+            else raw
+            if isinstance(raw, list)
+            else []
+        )
         return [
             {
                 "title": r.get("title", r.get("metadata", {}).get("title", "")),
@@ -169,9 +227,7 @@ def _search_firecrawl(query: str, max_results: int = 5) -> list[dict]:
         return []
 
 
-async def _search_brave(
-    query: str, api_key: str, max_results: int = 5
-) -> list[dict]:
+async def _search_brave(query: str, api_key: str, max_results: int = 5) -> list[dict]:
     """Call Brave Web Search API.  Returns list of {title, url, snippet}."""
     if not api_key:
         return []
@@ -231,6 +287,7 @@ def _search_ddg(query: str, max_results: int = 5) -> list[dict]:
 # Classification
 # ---------------------------------------------------------------------------
 
+
 def _classify_alert(title: str, snippet: str) -> dict:
     """Classify a search result into a threat category and severity."""
     text = f"{title} {snippet}".lower()
@@ -287,29 +344,42 @@ def _compute_threat_level(alerts: list[dict]) -> str:
 # Main search function
 # ---------------------------------------------------------------------------
 
+
 async def search_web_intelligence(
     route_description: str,
     regions: list[str] | None = None,
     categories: list[str] | None = None,
     brave_api_key: str = "",
+    searxng_url: str = "",
 ) -> dict:
     """Run web intelligence search and return structured threat assessment."""
     queries = _build_queries(route_description, regions, categories)
     log.info(
         "[web_intelligence] route=%r regions=%s queries=%d",
-        route_description[:80], regions, len(queries),
+        route_description[:80],
+        regions,
+        len(queries),
     )
 
     all_results: list[dict] = []
     seen_urls: set[str] = set()
     engine_used = "none"
 
-    async def _search_one_query(query: str, brave_api_key: str) -> tuple[str, list[dict]]:
-        """Run the Firecrawl → Brave → DDG cascade for a single query.
+    async def _search_one_query(
+        query: str, brave_api_key: str, searxng_url: str
+    ) -> tuple[str, list[dict]]:
+        """Run the SearXNG → Firecrawl → Brave → DDG cascade for a single query.
 
         Returns (engine_name, results_list).
         """
-        # Priority: Firecrawl (corporate-friendly) → Brave → DuckDuckGo
+        effective_searxng = searxng_url or get_searxng_url()
+        if effective_searxng:
+            results = await search_searxng(
+                query, max_results=3, searxng_url=effective_searxng
+            )
+            if results:
+                return ("searxng", results)
+
         # Firecrawl + DDG are sync — run in thread to avoid blocking the event loop
         results = await asyncio.to_thread(_search_firecrawl, query, 3)
         if results:
@@ -324,7 +394,7 @@ async def search_web_intelligence(
         return ("none", [])
 
     batch = await asyncio.gather(
-        *[_search_one_query(q, brave_api_key) for q in queries]
+        *[_search_one_query(q, brave_api_key, searxng_url) for q in queries]
     )
 
     for eng, results in batch:
@@ -341,14 +411,16 @@ async def search_web_intelligence(
     for r in all_results:
         classification = _classify_alert(r["title"], r["snippet"])
         if classification["relevant"]:
-            alerts.append({
-                "category": classification["category"],
-                "severity": classification["severity"],
-                "title": r["title"],
-                "summary": r["snippet"][:300],
-                "source_url": r["url"],
-                "source_engine": engine_used,
-            })
+            alerts.append(
+                {
+                    "category": classification["category"],
+                    "severity": classification["severity"],
+                    "title": r["title"],
+                    "summary": r["snippet"][:300],
+                    "source_url": r["url"],
+                    "source_engine": engine_used,
+                }
+            )
 
     # Sort by severity (CRITICAL > HIGH > MODERATE > LOW)
     severity_order = {"CRITICAL": 0, "HIGH": 1, "MODERATE": 2, "LOW": 3}
@@ -391,6 +463,7 @@ async def search_web_intelligence(
 # DynamicTool
 # ---------------------------------------------------------------------------
 
+
 class WebIntelligenceTool(DynamicTool):
     """Searches the web for current events affecting shipping routes."""
 
@@ -398,6 +471,7 @@ class WebIntelligenceTool(DynamicTool):
         super().__init__(tool_config=tool_config, **kwargs)
         cfg = tool_config or {}
         self._brave_api_key = cfg.get("brave_api_key", BRAVE_SEARCH_API_KEY)
+        self._searxng_url = cfg.get("searxng_url", get_searxng_url())
 
     @property
     def tool_name(self) -> str:
@@ -451,8 +525,8 @@ class WebIntelligenceTool(DynamicTool):
     async def _run_async_impl(
         self,
         args: dict,
-        tool_context: Optional[ToolContext] = None,
-        credential: Optional[str] = None,
+        tool_context: ToolContext | None = None,
+        credential: str | None = None,
     ) -> dict:
         try:
             return await search_web_intelligence(
@@ -460,6 +534,7 @@ class WebIntelligenceTool(DynamicTool):
                 regions=args.get("regions"),
                 categories=args.get("categories"),
                 brave_api_key=self._brave_api_key,
+                searxng_url=self._searxng_url,
             )
         except Exception as exc:
             log.exception("[web_intelligence] Unexpected error: %s", exc)
